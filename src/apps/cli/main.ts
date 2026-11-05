@@ -16,7 +16,7 @@ import { defaultPolicy, parsePolicy, toResolvedPolicy } from '../../packages/con
 import { collectDiff, extractCommitSnapshot, gitFailure, removeSnapshot, resolveCommit, runGit } from '../../packages/diff-inspector/git.js';
 import { buildEvidenceBundle, FsEvidenceWriter, renderSummaryMarkdown, writeEvidenceBundle } from '../../packages/evidence/bundle.js';
 import { buildGateRegistry, computeVerdict, runGates, selectGates } from '../../packages/quality-gates/run-gates.js';
-import { runImpact, runLedger, runReferences, runSymbols, runReport, runBenchCommand } from './context-commands.js';
+import { runImpact, runLedger, runReferences, runSymbols, runReport, runBenchCommand, runAccept, runMetrics } from './context-commands.js';
 import { openLedger, closeLedger } from '../../packages/ledger/db.js';
 import { recordCheckRun } from '../../packages/ledger/records.js';
 import { renderTaskRecordMarkdown } from '../../packages/evidence/task-record.js';
@@ -309,6 +309,8 @@ Usage:
   eil impact --repo <path> --base <ref>
   eil report --evidence <dir> [--out <file>]
   eil bench --manifest <yaml> --repo <path> --out <dir> [--base <ref>] [--policy <yaml>] [--db <ledger>]
+  eil accept --db <ledger> --task <id> [--reviewer human:alice] [--rejected] [--duration-seconds N] [--changes-requested "..."]
+  eil metrics --db <ledger> [--scenario S] [--variant B] [--control A] [--markdown]
   eil ledger --db <path> init | eil ledger --db <path> export --out <dir>
   eil --help | --version
 
@@ -329,6 +331,13 @@ Commands:
                (execution policy applies), optional per-step eil check,
                bench_runs/attempts recorded to the ledger. Incomparable
                configurations are recorded as such, never treated causal.
+  accept       Record a human acceptance/rejection review event for a task
+               and update its status. Separate from gate results: gates
+               passing never implies acceptance.
+  metrics      Honesty-first metrics from the ledger: Cost per Accepted
+               Task, Cascade Waste, Relative Evolution Cost, Regression
+               Tax. Missing data is UNAVAILABLE or a labeled lower bound,
+               never zero-filled.
   ledger       Initialize the SQLite ledger or export its tables to JSONL.
 
 Options:
@@ -355,7 +364,7 @@ Exit codes:
 type ParsedArgs = { _: string[] } & { [key: string]: string | boolean | string[] };
 
 function parseArgs(argv: string[]): ParsedArgs {
-  const valueFlags = new Set(['--repo', '--task', '--base', '--policy', '--out', '--ledger', '--file', '--name', '--db', '--evidence', '--manifest']);
+  const valueFlags = new Set(['--repo', '--task', '--base', '--policy', '--out', '--ledger', '--file', '--name', '--db', '--evidence', '--manifest', '--reviewer', '--duration-seconds', '--changes-requested', '--scenario', '--variant', '--control']);
   const parsed: ParsedArgs = { _: [] as string[] };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] as string;
@@ -394,7 +403,7 @@ export async function main(argv: string[]): Promise<0 | 1 | 2> {
     return 0;
   }
   const command = args._[0];
-  if (command === 'symbols' || command === 'references' || command === 'impact' || command === 'ledger' || command === 'report' || command === 'bench') {
+  if (command === 'symbols' || command === 'references' || command === 'impact' || command === 'ledger' || command === 'report' || command === 'bench' || command === 'accept' || command === 'metrics') {
     return contextCommand(command, args);
   }
   if (command !== 'check') {
@@ -496,6 +505,40 @@ async function contextCommand(command: string, args: ParsedArgs): Promise<0 | 1 
       });
       if (!quietArg(args)) for (const message of result.messages) console.log(message);
       if (result.json !== null && args['json'] === true) console.log(result.json);
+      return result.exitCode;
+    } else if (command === 'accept') {
+      const db = args['db'];
+      const task = args['task'];
+      if (typeof db !== 'string' || typeof task !== 'string') {
+        console.error('eil: error: --db and --task are required for `eil accept`');
+        return 2;
+      }
+      const result = await runAccept({
+        db,
+        task,
+        reviewer: typeof args['reviewer'] === 'string' ? args['reviewer'] : undefined,
+        rejected: args['rejected'] === true,
+        durationSeconds: typeof args['duration-seconds'] === 'string' ? Number(args['duration-seconds']) || undefined : undefined,
+        changesRequested: typeof args['changes-requested'] === 'string' ? args['changes-requested'] : undefined,
+      });
+      if (result.json !== null) console.log(result.json);
+      if (!quietArg(args)) for (const message of result.messages) console.error(message);
+      return result.exitCode;
+    } else if (command === 'metrics') {
+      const db = args['db'];
+      if (typeof db !== 'string') {
+        console.error('eil: error: --db is required for `eil metrics`');
+        return 2;
+      }
+      const result = await runMetrics({
+        db,
+        scenario: typeof args['scenario'] === 'string' ? args['scenario'] : undefined,
+        variant: typeof args['variant'] === 'string' ? args['variant'] : undefined,
+        control: typeof args['control'] === 'string' ? args['control'] : undefined,
+        format: args['markdown'] === true ? 'markdown' : 'json',
+      });
+      console.log(result.json ?? '');
+      if (!quietArg(args)) for (const message of result.messages) console.error(message);
       return result.exitCode;
     } else {
       const action = args._[1];

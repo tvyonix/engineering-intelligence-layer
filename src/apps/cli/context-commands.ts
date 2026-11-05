@@ -7,7 +7,8 @@ import { getFileSymbols } from '../../packages/context-tools/symbols.js';
 import { findSymbolReferences } from '../../packages/context-tools/references.js';
 import { computeImpact } from '../../packages/context-tools/impact.js';
 import { openLedger, closeLedger, listAppliedMigrations } from '../../packages/ledger/db.js';
-import { exportJsonl } from '../../packages/ledger/records.js';
+import { exportJsonl, recordReview } from '../../packages/ledger/records.js';
+import { computeBenchMetrics, renderMetricsMarkdown } from '../../packages/ledger/metrics.js';
 import { buildPrReport } from '../../packages/evidence/pr-report.js';
 import { runBench } from '../../packages/benchmarks/runner.js';
 
@@ -198,4 +199,92 @@ export async function runBenchCommand(options: {
     json: result.summary !== null ? `${JSON.stringify(result.summary, null, 2)}\n` : null,
     messages: result.messages,
   };
+}
+
+/**
+ * Task 5.5 CLI: `eil accept --db <path> --task <id> [--reviewer human:alice]
+ * [--rejected] [--duration-seconds N] [--changes-requested "..."]`.
+ *
+ * Records the human acceptance (or rejection) as a review event and updates
+ * the task status. Gate status and acceptance stay separate facts: a task
+ * with all gates passing is still `needs_review` until this command runs.
+ */
+export async function runAccept(options: {
+  db: string;
+  task: string;
+  reviewer?: string;
+  rejected?: boolean;
+  durationSeconds?: number;
+  changesRequested?: string;
+}): Promise<ContextCommandOutput> {
+  const messages: string[] = [];
+  let ledger;
+  try {
+    ledger = openLedger(options.db);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return fail(messages, `cannot open ledger: ${message}`);
+  }
+  try {
+    const task = ledger.db.prepare('SELECT id, status FROM tasks WHERE id = ?').get(options.task) as
+      | { id: string; status: string }
+      | undefined;
+    if (task === undefined) {
+      return fail(messages, `task '${options.task}' not found in ledger '${options.db}'`);
+    }
+    const accepted = options.rejected !== true;
+    const reviewer = options.reviewer ?? 'human:unspecified';
+    recordReview(ledger, {
+      taskId: options.task,
+      reviewerType: reviewer,
+      accepted,
+      durationSeconds: options.durationSeconds ?? null,
+      changesRequested: options.changesRequested ?? null,
+      observedAt: new Date().toISOString(),
+    });
+    ledger.db
+      .prepare('UPDATE tasks SET status = ? WHERE id = ?')
+      .run(accepted ? 'accepted' : 'rejected', options.task);
+    const payload = {
+      task: options.task,
+      previousStatus: task.status,
+      status: accepted ? 'accepted' : 'rejected',
+      reviewer,
+      note: 'acceptance is a human event recorded here; it never follows from gate results alone',
+    };
+    return output(payload);
+  } finally {
+    closeLedger(ledger);
+  }
+}
+
+/** Task 5.4 CLI: `eil metrics --db <path> [--scenario S] [--variant B] [--control A]`. */
+export async function runMetrics(options: {
+  db: string;
+  scenario?: string;
+  variant?: string;
+  control?: string;
+  format?: 'json' | 'markdown';
+}): Promise<ContextCommandOutput> {
+  const messages: string[] = [];
+  let ledger;
+  try {
+    ledger = openLedger(options.db);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return fail(messages, `cannot open ledger: ${message}`);
+  }
+  try {
+    const metrics = computeBenchMetrics(ledger, {
+      scenario: options.scenario,
+      variant: options.variant,
+      control: options.control,
+    });
+    if (options.format === 'markdown') {
+      return { exitCode: 0, json: renderMetricsMarkdown(metrics), messages };
+    }
+    return output(metrics);
+  } finally {
+    closeLedger(ledger);
+  }
 }
