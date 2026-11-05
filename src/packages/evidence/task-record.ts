@@ -22,6 +22,12 @@ export function renderTaskRecordMarkdown(contract: TaskContract, bundle: Evidenc
   lines.push(`- **Head commit:** \`${bundle.headCommit.slice(0, 12)}\``);
   lines.push(`- **Run:** ${bundle.mode}, generated ${bundle.generatedAt} by EIL ${bundle.eilVersion}`);
   lines.push(`- **Verdict:** \`${bundle.verdict}\` (exit code ${bundle.exitCode})`);
+  if (bundle.risk !== undefined) {
+    lines.push(`- **Risk (deterministic):** \`${bundle.risk}\``);
+    for (const reason of bundle.riskReasons ?? []) {
+      lines.push(`  - ${reason}`);
+    }
+  }
   lines.push('');
   lines.push('## Scope');
   lines.push('');

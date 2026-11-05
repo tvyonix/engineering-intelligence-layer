@@ -36,6 +36,8 @@ export interface RecordCheckRunInput {
   contractHash: string;
   /** Check verdict: needs_review | blocked | error. */
   status: string;
+  /** Deterministic risk classification (Phase 4.1). */
+  risk?: 'low' | 'medium' | 'high' | 'blocked';
   startedAt: string;
   completedAt: string;
   policyVersion: string;
@@ -65,9 +67,10 @@ export const CHECK_ENGINE_ID = 'eil-check';
 export function recordCheckRun(ledger: Ledger, input: RecordCheckRunInput): RecordCheckRunOutput {
   const insertTask = ledger.db.prepare(`
     INSERT INTO tasks (id, base_commit, type, risk, status, contract_hash, created_at)
-    VALUES (?, ?, 'check', 'unknown', ?, ?, ?)
+    VALUES (?, ?, 'check', ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       base_commit = excluded.base_commit,
+      risk = excluded.risk,
       status = excluded.status,
       contract_hash = excluded.contract_hash
   `);
@@ -84,7 +87,7 @@ export function recordCheckRun(ledger: Ledger, input: RecordCheckRunInput): Reco
 
   const run = ledger.db.transaction(() => {
     const now = new Date().toISOString();
-    insertTask.run(input.taskId, input.baseCommit, input.status, input.contractHash, now);
+    insertTask.run(input.taskId, input.baseCommit, input.risk ?? 'unknown', input.status, input.contractHash, now);
     const attemptInfo = insertAttempt.run(
       input.taskId,
       CHECK_ENGINE_ID,

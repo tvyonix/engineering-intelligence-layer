@@ -50,6 +50,9 @@ export const evidenceBundleSchema = z
     baselineContext: z.array(violationSchema),
     verdict: z.enum(['blocked', 'error', 'needs_review']),
     exitCode: z.union([z.literal(0), z.literal(1), z.literal(2)]),
+    /** Deterministic risk classification (Phase 4.1); present from EIL 0.2.0-alpha.1. */
+    risk: z.enum(['low', 'medium', 'high', 'blocked']).optional(),
+    riskReasons: z.array(z.string()).optional(),
     diffPath: z.string().nullable(),
     fullLogsDirectory: z.string(),
     /** Acceptance commands are recorded, never executed in check mode. */
@@ -99,6 +102,8 @@ export function buildEvidenceBundle(params: {
   baselineContext: Violation[];
   verdict: CheckVerdict;
   exitCode: 0 | 1 | 2;
+  risk?: 'low' | 'medium' | 'high' | 'blocked';
+  riskReasons?: string[];
   diffPath: string | null;
   fullLogsDirectory: string;
 }): EvidenceBundle {
@@ -120,6 +125,8 @@ export function buildEvidenceBundle(params: {
     baselineContext: params.baselineContext,
     verdict: params.verdict,
     exitCode: params.exitCode,
+    ...(params.risk !== undefined ? { risk: params.risk } : {}),
+    ...(params.riskReasons !== undefined ? { riskReasons: params.riskReasons } : {}),
     diffPath: params.diffPath,
     fullLogsDirectory: params.fullLogsDirectory,
     acceptanceCommandsExecuted: false,

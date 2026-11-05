@@ -62,7 +62,8 @@
 
 ## Phase 4 — Risk-aware execution and recovery
 
-- [ ] 4.1 Реализовать deterministic risk classification + blocked risk без ML.
+- [x] 4.1 Реализовать deterministic risk classification + blocked risk без ML.
+  <!-- Evidence: policy-engine/risk.ts classifyTaskRisk: pure monotonic rules (low → medium → high, blocked terminal); blocked on protected-path violations; high on privileged CI/auth/crypto/secret/migration/release paths, suspicious path shapes (symlink escape, unparseable), unapproved dependency changes, breaking public API, security risk hints (hints only elevate — nothing can lower a risk, no model involved); medium on cross-top-level-dir changes. Wired into evidence bundle (risk, riskReasons), CLI output, Task Record, ledger tasks.risk. Tests: 8 unit rule cases + integration (low/high/blocked in bundle+ledger, hint elevation, blocked on .env*). -->
 - [ ] 4.2 Low/medium: cheap-first bounded retry; high: configured strong tier или needs_review.
 - [ ] 4.3 Эскалация только после воспроизводимых fail-сигналов; на чистом состоянии, с отдельной историей затрат.
 - [ ] 4.4 Сохранять diff и ошибки от неудачных попыток, не переносить неконтролируемое состояние.

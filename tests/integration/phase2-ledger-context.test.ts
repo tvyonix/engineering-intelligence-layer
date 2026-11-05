@@ -58,11 +58,16 @@ policy:
     const out = await runCheck({ repo: repo.root, task: taskPath, policy: policyPath, out: evidenceDir, ledger: dbPath, quiet: true });
     expect(out.exitCode).toBe(0);
 
+    // Deterministic risk (4.1): single src file, no signals → low.
+    const evidence = JSON.parse(await readFile(join(evidenceDir, 'evidence.json'), 'utf8'));
+    expect(evidence.risk).toBe('low');
+
     const ledger = openLedger(dbPath);
     try {
       expect(listAppliedMigrations(ledger).map((m) => m.name)).toContain('core-tables');
       const task = ledger.db.prepare('SELECT * FROM tasks WHERE id = ?').get('ledger-task') as Record<string, unknown>;
       expect(task?.status).toBe('needs_review');
+      expect(task?.risk).toBe('low');
       const attempts = ledger.db.prepare('SELECT * FROM attempts').all() as Record<string, unknown>[];
       expect(attempts).toHaveLength(1);
       expect(attempts[0]?.engine).toBe(CHECK_ENGINE_ID);
@@ -81,6 +86,88 @@ policy:
     expect(taskRecord).toContain('not accepted');
     expect(taskRecord).toContain('Model API cost: unknown');
     expect(taskRecord).toContain('recorded, not executed in check mode');
+  });
+
+  it('risk classification surfaces in bundle, CLI and ledger (4.1)', async () => {
+    const baseCommit = repo.git('rev-parse', 'HEAD').trim();
+    const taskPath = join(repo.parent, 'task.yaml');
+    // Auth path inside allow + security hint → high risk with no gate failure.
+    await writeFile(
+      taskPath,
+      `version: 1
+id: risk-task
+baseCommit: "${baseCommit}"
+description: "Auth change"
+riskHints:
+  - "touches session handling"
+scope:
+  allow:
+    - "src/**"
+  protect: []
+acceptance:
+  - id: u
+    description: "x"
+policy:
+  maxAttempts: 1
+  noNewDependencies: false
+`,
+      'utf8',
+    );
+    const policyPath = join(repo.parent, 'policy.yaml');
+    await writeFile(policyPath, minimalPolicyYaml(['path-scope']), 'utf8');
+    await repo.writeFile('src/auth/login.ts', 'export const login = 1;\n');
+    const dbPath = join(repo.parent, 'risk-ledger.db');
+    const evidenceDir = join(repo.parent, 'ev-risk');
+
+    const out = await runCheck({ repo: repo.root, task: taskPath, policy: policyPath, out: evidenceDir, ledger: dbPath, quiet: true });
+    expect(out.exitCode).toBe(0); // gates pass; risk is orthogonal to the verdict
+    const evidence = JSON.parse(await readFile(join(evidenceDir, 'evidence.json'), 'utf8'));
+    expect(evidence.risk).toBe('high');
+    expect(evidence.riskReasons.join('\n')).toContain('high-risk area: src/auth/login.ts');
+    expect(evidence.riskReasons.join('\n')).toContain("risk hint elevates: 'touches session handling'");
+    expect(out.messages.some((m) => m.includes('risk: high'))).toBe(true);
+
+    const ledger = openLedger(dbPath);
+    try {
+      const task = ledger.db.prepare('SELECT risk FROM tasks WHERE id = ?').get('risk-task') as Record<string, unknown>;
+      expect(task?.risk).toBe('high');
+    } finally {
+      closeLedger(ledger);
+    }
+
+    // Protected path → blocked risk; the gate verdict stays the blocker.
+    await writeFile(
+      taskPath,
+      `version: 1
+id: risk-blocked
+baseCommit: "${baseCommit}"
+description: "Env change"
+scope:
+  allow:
+    - "**"
+  protect:
+    - ".env*"
+acceptance:
+  - id: u
+    description: "x"
+policy:
+  maxAttempts: 1
+  noNewDependencies: false
+`,
+      'utf8',
+    );
+    await repo.writeFile('.env.local', 'SECRET=1\n');
+    const blocked = await runCheck({ repo: repo.root, task: taskPath, policy: policyPath, out: join(repo.parent, 'ev-blocked'), ledger: dbPath, quiet: true });
+    expect(blocked.exitCode).toBe(1);
+    const blockedEvidence = JSON.parse(await readFile(join(repo.parent, 'ev-blocked', 'evidence.json'), 'utf8'));
+    expect(blockedEvidence.risk).toBe('blocked');
+    const ledger2 = openLedger(dbPath);
+    try {
+      const task = ledger2.db.prepare('SELECT risk FROM tasks WHERE id = ?').get('risk-blocked') as Record<string, unknown>;
+      expect(task?.risk).toBe('blocked');
+    } finally {
+      closeLedger(ledger2);
+    }
   });
 
   it('ledger write failure does not change the check verdict', async () => {

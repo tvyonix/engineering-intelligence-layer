@@ -20,6 +20,7 @@ import { runImpact, runLedger, runReferences, runSymbols } from './context-comma
 import { openLedger, closeLedger } from '../../packages/ledger/db.js';
 import { recordCheckRun } from '../../packages/ledger/records.js';
 import { renderTaskRecordMarkdown } from '../../packages/evidence/task-record.js';
+import { classifyTaskRisk } from '../../packages/policy-engine/risk.js';
 
 export const EIL_VERSION = '0.2.0-alpha.0';
 
@@ -184,6 +185,14 @@ export async function runCheck(options: CheckOptions): Promise<CheckRunOutput> {
   const gates = selectGates(registry, ctx);
   const { results: gateResults, violations, baselineContext } = await runGates(gates, ctx);
   const { verdict, exitCode } = computeVerdict(gateResults);
+
+  // Deterministic risk classification (Phase 4.1): pure rules, monotonic,
+  // no model involvement. Hints elevate; nothing here can lower a risk.
+  const changedPaths = [
+    ...diff.changed.flatMap((c) => [c.path, c.origPath]),
+    ...diff.untracked,
+  ].filter((p): p is string => p !== undefined);
+  const riskAssessment = classifyTaskRisk({ changedPaths, violations, riskHints: contract.riskHints });
   // The promise is assigned inside the closure; widen before reading.
   const createdSnapshot = snapshotState.promise as Promise<{ ok: true; dir: string } | { ok: false; reason: string }> | null;
   if (createdSnapshot !== null) {
@@ -215,6 +224,8 @@ export async function runCheck(options: CheckOptions): Promise<CheckRunOutput> {
     baselineContext,
     verdict,
     exitCode,
+    risk: riskAssessment.risk,
+    riskReasons: riskAssessment.reasons,
     diffPath: join('logs', diffLogName),
     fullLogsDirectory: join(evidenceDir, 'logs'),
   });
@@ -242,7 +253,10 @@ export async function runCheck(options: CheckOptions): Promise<CheckRunOutput> {
     log(out, quiet, `  ${gate.id.padEnd(20)} ${gate.status.padEnd(14)} ${gate.mandatory ? 'mandatory' : 'optional  '} ${gate.reason ?? ''}`);
   }
   log(out, quiet, '');
-  log(out, quiet, `verdict: ${bundle.verdict} (exit ${bundle.exitCode})`);
+  log(out, quiet, `verdict: ${bundle.verdict} (exit ${bundle.exitCode}); risk: ${bundle.risk ?? 'unknown'}`);
+  for (const reason of bundle.riskReasons ?? []) {
+    log(out, quiet, `  risk: ${reason}`);
+  }
   if (bundle.verdict === 'needs_review') {
     log(out, quiet, 'all mandatory gates passed; human review is required — EIL never merges');
   } else if (bundle.verdict === 'blocked') {
@@ -262,6 +276,7 @@ export async function runCheck(options: CheckOptions): Promise<CheckRunOutput> {
         baseCommit,
         contractHash,
         status: bundle.verdict,
+        risk: bundle.risk,
         startedAt,
         completedAt: new Date().toISOString(),
         policyVersion: resolvedPolicy.source === 'file' ? 'file' : 'default',
