@@ -1,0 +1,93 @@
+# Engineering Intelligence Layer (EIL) — OpenSpec v0.2
+
+**Статус:** проект спецификации. Это не работающая программа и не доказанная экономия.
+
+## Что мы строим
+
+Внешний **Engineering Intelligence Layer** над готовым AI coding-agent. Он не заменяет движок; он принимает задачу, разрешает ограниченную область изменений, проверяет полученный diff, собирает доказательства качества и считает стоимость принятого изменения и последующей эволюции продукта.
+
+Основная проверяемая гипотеза: один и тот же движок с EIL показывает меньшую стоимость **accepted change** и/или меньше регрессий на серии изменений, чем без EIL, при не меньшей функциональной корректности.
+
+## Принципиальные отличия от v0.1
+
+- Ядро — проверка инженерных контрактов и измерение **evolution cost**, а не отдельный интеллектуальный agent loop.
+- В первом эксперименте используется **один базовый движок (Pi SDK)**. Только после A/B добавляется второй адаптер.
+- **GLM-5.3-Flash** — рекомендуемый основной исполнитель реализации и low-cost tier; Tier-1 модель подключается для design/security review и сложных ошибок. Успешность этого разделения ещё необходимо измерить.
+- Роутинг сначала задаётся правилами, без Jev / ONNX / bandit / обучения.
+- Поддерживается отдельный режим `evaluate-diff`, который не требует запуска агента. Это первая инкрементальная ценность.
+- CI и GitHub-интеграции — надстройки: MVP работает локально в CLI.
+
+## Реализация (Phase 0 + 1 + 2, выполнено)
+
+В репозитории появилась реализация Phase 0–2: standalone-CLI `eil check` — проверка существующего diff по контракту задачи и политике, без агента, LLM и сети; детерминированные гейты; контекстные инструменты на ts-morph; SQLite ledger с телеметрией и JSONL-экспортом.
+
+```text
+src/
+  apps/cli/                 # bin `eil`: check, symbols, references, impact, ledger
+  packages/
+    contracts/              # Zod TaskContract + policy, стабильный sha256-хэш
+    policy-engine/          # канонизация путей, allow/protect, symlink/traversal, new vs inherited
+    diff-inspector/         # git: name-status -z, untracked, baseline-снапшот (git archive), patch
+    quality-gates/          # path-scope, dependency-policy, types/lint/tests, import-boundaries,
+                            # api-compat, ds-conformance; run-gates + verdict (fail closed)
+    context-tools/          # symbols(file), references(symbol), impact(diff) — ts-morph, read-only
+    ledger/                 # SQLite: tasks/attempts/gates/reviews/regressions/bench_runs,
+                            # миграции, cost billed|estimated|unknown, JSONL export
+    evidence/               # EvidenceBundle (Zod), summary.md, task-record.md, logs/
+tests/                      # интеграционные тесты на реальных fixture-репозиториях
+docs/decisions.md           # журнал решений (ADR-lite)
+docs/security-review-brief.md  # бриф для Tier-1 security review (task 1.7)
+```
+
+Ключевые политики: host-исполнение команд запрещено по умолчанию (`execution.vettedRepos`); новые зависимости требуют записи в `dependencies.approvedFiles`; обрезанный патч (>16 MiB) → `diff-patch-integrity` error; baseline new/inherited через `git archive`-снапшот; в ledger стоимость помечается `billed|estimated|unknown` (unknown ≠ $0); Task Record в каждом evidence-бандле.
+
+Команды: `npm install`, `npm run ci`, проверка: `eil check --repo <path> --task <task.yaml> [--ledger <db>]`; контекст: `eil symbols|references|impact`; ledger: `eil ledger --db <path> init|export`. Коды выхода: 0 — гейты пройдены (`needs_review`, не acceptance), 1 — blocked, 2 — error (fail closed). Окружения: `docs/supported-environments.md`.
+
+## Файлы
+
+```text
+openspec/
+  config.yaml
+  changes/establish-engineering-intelligence-layer/
+    proposal.md
+    design.md
+    tasks.md
+    specs/
+      task-contract/spec.md
+      engine-adapter/spec.md
+      diff-quality/spec.md
+      secure-execution/spec.md
+      evaluation-ledger/spec.md
+      evolution-benchmark/spec.md
+      routing-policy/spec.md
+      delivery-evidence/spec.md
+    .openspec.yaml
+examples/
+  task.yaml
+  policy.yaml
+  benchmark.yaml
+  codex-or-glm-handoff.md
+docs/
+  threat-model.md
+  experiments.md
+  implementation-strategy.md
+```
+
+## Рекомендуемый порядок
+
+1. Ознакомиться с `proposal.md` и `design.md`.
+2. Открыть `tasks.md`: это исполнимый checklist.
+3. Начать с **Phase 0: diff gate**, затем **Phase 1: telemetry**, затем **Phase 2: Pi** и, наконец, сравнительный benchmark.
+4. Для выполнения передать исполнителю содержимое `examples/codex-or-glm-handoff.md`.
+5. Проверить спецификацию установленным OpenSpec CLI: `openspec validate establish-engineering-intelligence-layer --strict`. Команда приведена для пользователя; при генерации архива CLI не запускался.
+
+## Инварианты
+
+- Один writer на изолированную задачу.
+- Нет автоматического merge или production deploy.
+- Проверки выполняются детерминированно; LLM judge — дополнение, не замена.
+- Пропуск обязательных проверок не может интерпретироваться как success.
+- Secrets и секретные контексты не попадают в телеметрию или внешний LLM без отдельной политики.
+- Сильная модель не является обязательной для каждой подзадачи, но security-critical изменения требуют независимой приёмки человеком.
+
+**Источники формата:** https://openspec.dev/docs/schemas/spec-driven и https://github.com/Fission-AI/OpenSpec .

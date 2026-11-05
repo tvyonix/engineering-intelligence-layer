@@ -1,0 +1,156 @@
+import { isAbsolute, resolve } from 'node:path';
+import { realpath } from 'node:fs/promises';
+import { checkPathContainedInRoot, canonicalizeRepoRelativePath } from '../../packages/policy-engine/paths.js';
+import { collectDiff, gitFailure, resolveCommit, runGit } from '../../packages/diff-inspector/git.js';
+import { createProject, ContextLimitExceededError } from '../../packages/context-tools/project.js';
+import { getFileSymbols } from '../../packages/context-tools/symbols.js';
+import { findSymbolReferences } from '../../packages/context-tools/references.js';
+import { computeImpact } from '../../packages/context-tools/impact.js';
+import { openLedger, closeLedger, listAppliedMigrations } from '../../packages/ledger/db.js';
+import { exportJsonl } from '../../packages/ledger/records.js';
+
+export interface ContextCommandOutput {
+  exitCode: 0 | 1 | 2;
+  /** JSON payload for machine consumption (stdout when not quiet). */
+  json: string | null;
+  messages: string[];
+}
+
+export interface RepoResolution {
+  ok: true;
+  toplevel: string;
+  realRoot: string;
+}
+
+export interface RepoResolutionFailure {
+  ok: false;
+  message: string;
+}
+
+export async function resolveRepo(repoInput: string): Promise<RepoResolution | RepoResolutionFailure> {
+  const repoDir = isAbsolute(repoInput) ? repoInput : resolve(repoInput);
+  try {
+    const result = await runGit(repoDir, ['rev-parse', '--show-toplevel']);
+    if (result.code !== 0) {
+      return { ok: false, message: `'${repoDir}' is not a git repository: ${result.stderr.trim()}` };
+    }
+    const toplevel = result.stdout.trim();
+    const realRoot = await realpath(toplevel);
+    return { ok: true, toplevel, realRoot };
+  } catch (error) {
+    const failure = gitFailure(error, 'git rev-parse');
+    return { ok: false, message: `cannot run git for '${repoDir}': ${failure.stderr.trim()}` };
+  }
+}
+
+function fail(messages: string[], message: string): ContextCommandOutput {
+  messages.push(`eil: error: ${message}`);
+  return { exitCode: 2, json: null, messages };
+}
+
+export interface ContextRepoOptions {
+  repo: string;
+  quiet?: boolean;
+}
+
+function output(json: unknown): ContextCommandOutput {
+  return { exitCode: 0, json: `${JSON.stringify(json, null, 2)}\n`, messages: [] };
+}
+
+/** Task 2.1 CLI: `eil symbols --repo <path> --file <relpath>`. */
+export async function runSymbols(options: ContextRepoOptions & { file: string }): Promise<ContextCommandOutput> {
+  const messages: string[] = [];
+  const repo = await resolveRepo(options.repo);
+  if (!repo.ok) return fail(messages, repo.message);
+  const canonical = canonicalizeRepoRelativePath(options.file);
+  if (canonical.kind === 'invalid') return fail(messages, `--file: ${canonical.reason}`);
+  const containment = await checkPathContainedInRoot(repo.realRoot, canonical.path);
+  if (!containment.contained) return fail(messages, `--file escapes the repository root (${containment.note ?? 'not contained'})`);
+  try {
+    const project = createProject(repo.toplevel);
+    const symbols = getFileSymbols(project, repo.toplevel, canonical.path);
+    return output(symbols);
+  } catch (error) {
+    if (error instanceof ContextLimitExceededError) return fail(messages, error.message);
+    const message = error instanceof Error ? error.message : String(error);
+    return fail(messages, message);
+  }
+}
+
+/** Task 2.2 CLI: `eil references --repo <path> --file <relpath> --name <symbol>`. */
+export async function runReferences(options: ContextRepoOptions & { file: string; name: string }): Promise<ContextCommandOutput> {
+  const messages: string[] = [];
+  const repo = await resolveRepo(options.repo);
+  if (!repo.ok) return fail(messages, repo.message);
+  const canonical = canonicalizeRepoRelativePath(options.file);
+  if (canonical.kind === 'invalid') return fail(messages, `--file: ${canonical.reason}`);
+  const containment = await checkPathContainedInRoot(repo.realRoot, canonical.path);
+  if (!containment.contained) return fail(messages, `--file escapes the repository root (${containment.note ?? 'not contained'})`);
+  try {
+    const project = createProject(repo.toplevel);
+    const references = findSymbolReferences(project, repo.toplevel, canonical.path, options.name);
+    return output(references);
+  } catch (error) {
+    if (error instanceof ContextLimitExceededError) return fail(messages, error.message);
+    const message = error instanceof Error ? error.message : String(error);
+    return fail(messages, message);
+  }
+}
+
+/** Task 2.3 CLI: `eil impact --repo <path> --base <ref>`. */
+export async function runImpact(options: ContextRepoOptions & { base: string }): Promise<ContextCommandOutput> {
+  const messages: string[] = [];
+  const repo = await resolveRepo(options.repo);
+  if (!repo.ok) return fail(messages, repo.message);
+  const baseCommit = await resolveCommit(repo.toplevel, options.base);
+  if (baseCommit === null) return fail(messages, `base commit '${options.base}' does not resolve in repository`);
+  const headCommit = await resolveCommit(repo.toplevel, 'HEAD');
+  if (headCommit === null) return fail(messages, 'repository has no HEAD commit');
+  let diff;
+  try {
+    diff = await collectDiff(repo.toplevel, baseCommit, headCommit);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return fail(messages, message);
+  }
+  const changedPaths = [...diff.changed.map((c) => c.path), ...diff.untracked];
+  try {
+    const project = createProject(repo.toplevel);
+    const impact = computeImpact(project, repo.toplevel, changedPaths);
+    return output(impact);
+  } catch (error) {
+    if (error instanceof ContextLimitExceededError) return fail(messages, error.message);
+    const message = error instanceof Error ? error.message : String(error);
+    return fail(messages, message);
+  }
+}
+
+/** Task 2.4 CLI: `eil ledger --db <path> init` / `eil ledger --db <path> export --out <dir>`. */
+export async function runLedger(options: { quiet?: boolean; action: string; db: string; out?: string }): Promise<ContextCommandOutput> {
+  const messages: string[] = [];
+  if (options.action === 'init') {
+    try {
+      const ledger = openLedger(options.db);
+      const migrations = listAppliedMigrations(ledger);
+      closeLedger(ledger);
+      const payload = { db: options.db, migrations };
+      return output(payload);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return fail(messages, `cannot initialize ledger: ${message}`);
+    }
+  }
+  if (options.action === 'export') {
+    if (options.out === undefined) return fail(messages, '--out is required for ledger export');
+    try {
+      const ledger = openLedger(options.db);
+      const files = exportJsonl(ledger, options.out);
+      closeLedger(ledger);
+      return output({ out: options.out, files });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return fail(messages, `cannot export ledger: ${message}`);
+    }
+  }
+  return fail(messages, `unknown ledger action '${options.action}' (use init or export)`);
+}

@@ -1,0 +1,39 @@
+version: 1
+name: beaver-evolution-sample
+# Example only: pair executions from the same base commit and equivalent fixtures.
+repoFixture: fixtures/beaver-monitor
+variants:
+  - id: A
+    agent: pi
+    model: zai/glm-5.3-flash
+    engineeringGates: false
+    adaptiveRouting: false
+  - id: B
+    agent: pi
+    model: zai/glm-5.3-flash
+    engineeringGates: true
+    adaptiveRouting: false
+  - id: C
+    agent: pi
+    model: zai/glm-5.3-flash
+    engineeringGates: true
+    adaptiveRouting: true
+steps:
+  - id: 1
+    task: "Базовая таблица алертов"
+  - id: 2
+    task: "Фильтры по статусу и сервису"
+  - id: 3
+    task: "Массовое подтверждение"
+  - id: 4
+    task: "Подключение API с обработкой ошибок"
+  - id: 5
+    task: "Миграция API-контракта с обратной совместимостью"
+  - id: 6
+    task: "Регрессионное исправление без потери прежних сценариев"
+metrics:
+  - cost_per_accepted_task
+  - regression_tax
+  - relative_evolution_cost
+  - human_review_seconds
+  - acceptance_rate

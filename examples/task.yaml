@@ -1,0 +1,22 @@
+version: 1
+id: alerts-bulk-ack
+baseCommit: abc1234
+# Demo fields; update paths/commit for the target repository.
+description: "Добавить массовое подтверждение алертов на Beaver UI"
+scope:
+  allow:
+    - src/features/alerts/**
+    - tests/alerts/**
+  protect:
+    - .github/workflows/**
+    - .env*
+    - package-lock.json
+acceptance:
+  - id: unit
+    description: "Массовое подтверждение обновляет только выбранные алерты"
+  - id: e2e
+    description: "Пользователь может отменить выбор после операции"
+policy:
+  maxUsd: 3.0 # demo budget, not measured or recommended default
+  maxAttempts: 2
+  noNewDependencies: true

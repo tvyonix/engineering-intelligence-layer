@@ -1,0 +1,6 @@
+node_modules/
+dist/
+coverage/
+eil-evidence/
+*.tsbuildinfo
+.DS_Store

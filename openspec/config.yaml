@@ -1,0 +1,9 @@
+schema: spec-driven
+context: |
+  Project: Engineering Intelligence Layer v0.2, a TypeScript/Node.js
+  evaluation and engineering policy layer around existing coding agents.
+  Initial engine: Pi SDK. Initial preferred implementer: GLM-5.3-Flash.
+  No custom agent loop, no always-on multi-agent team, no predictive ML router.
+  Work only on existing JS/TS repositories. Use one writer per isolated worktree.
+  Prioritize safety, reproducibility and acceptance quality over token cost.
+  Write prose in Russian, identifiers and MUST/SHALL requirements in English.

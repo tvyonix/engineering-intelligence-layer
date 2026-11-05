@@ -1,0 +1,53 @@
+version: 1
+engines:
+  primary: pi
+models:
+  cheap: zai/glm-5.3-flash
+  strong: null # Fill with approved Tier-1 provider/model; otherwise needs_review
+routing:
+  low: cheap
+  medium: cheap
+  high: strong_or_review
+  blocked: reject
+  maxCheapRetries: 1
+  forbidPolicyOverrideByModel: true
+safety:
+  allowExternalModels: false # switch only after organization approval
+  requireSandboxForExecution: true
+  defaultNetwork: deny
+quality:
+  required:
+    - path-scope
+    - dependency-policy
+    - types
+    - lint
+    - tests
+# --- Phase 1 additions (uncomment and adjust per repository) ---
+# quality:
+#   commands:            # authoritative gate commands; operator-controlled only
+#     types: "npx --no-install tsc --noEmit --pretty false"
+#     lint: "npx --no-install eslint . --format json"
+#     tests: "npm test"
+# execution:             # host command execution; denied unless listed here
+#   vettedRepos:         # realpath list; intended for verified fixtures only
+#     - "/absolute/path/to/vetted-fixture-repo"
+#   timeoutMs: 120000
+#   maxOutputBytes: 1048576
+# dependencies:
+#   approvedFiles:       # manifest/lockfile changes approved by the operator
+#     - "package.json"
+# boundaries:            # opt-in import-boundaries gate
+#   forbiddenImports:
+#     - from: "src/**"
+#       disallow: ["src/internal/**"]
+#   forbidNewCycles: true
+# quality.required:      # add "api-compat" for TS libraries with a stable public API
+#   - "api-compat"
+# ds:                    # opt-in design-system policy (activates ds-conformance gate)
+#   registry: beaver-ui
+#   forbiddenComponents: ["LegacyTable"]
+#   forbiddenProps:
+#     Button: ["legacyVariant"]
+#   componentImports: ["@beaver-ui/*"]
+#   allowedImports: ["@beaver-ui/next"]
+#   forbidRawColors: true
