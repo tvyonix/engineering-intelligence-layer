@@ -52,8 +52,10 @@
 
 ## Phase 3 — Safe runner and first engine
 
-- [ ] 3.1 Реализовать отдельный Git worktree per task, lock, отмену и гарантированную очистку.
+- [x] 3.1 Реализовать отдельный Git worktree per task, lock, отмену и гарантированную очистку.
+  <!-- Evidence: isolated-runner/workspace.ts — independent CLONE per task at the base commit (source repo read-only, hardlinked objects), one-writer lock (.eil-lock.json: live-pid protection, foreign-task refusal), stale-lock recovery (recoverStaleWorkspaces: dead pid / aged foreign lock), idempotent removeWorkspace with live-writer protection, captureFailedAttempt (4.4) preserving changed files + patch incl. untracked into evidence before discard. Engine-adapter spec "One writer": second writer gets a clean refusal without damaging the first. Tests: workspace.test.ts (7 lifecycle + capture cases). NOTE: no sandbox semantics here — this module never executes repository content; execution stays gated by the execution policy / Phase 3.2. -->
 - [ ] 3.2 Выбрать sandbox контейнер/VM; до реализации предоставить check-only fallback.
+  <!-- TL decision 2026-11-05: Linux VM + container runner (Colima/Docker Desktop candidate), confirmed by a security test. Pending the security test + task 1.7; check-only fallback already exists (eil check). -->
 - [ ] 3.3 Реализовать allowlist инструментов, блокировку secrets и контролируемый egress; тесты на prompt-injection из README/comments.
 - [ ] 3.4 Реализовать единственный `PiEngineRunner`, используя официальный Pi SDK без собственного agent loop.
 - [ ] 3.5 Настроить GLM-5.3-Flash как default executor через поддерживаемый провайдер, с конфигурируемой моделью и без жёсткого хранения ключей.
@@ -64,9 +66,12 @@
 
 - [x] 4.1 Реализовать deterministic risk classification + blocked risk без ML.
   <!-- Evidence: policy-engine/risk.ts classifyTaskRisk: pure monotonic rules (low → medium → high, blocked terminal); blocked on protected-path violations; high on privileged CI/auth/crypto/secret/migration/release paths, suspicious path shapes (symlink escape, unparseable), unapproved dependency changes, breaking public API, security risk hints (hints only elevate — nothing can lower a risk, no model involved); medium on cross-top-level-dir changes. Wired into evidence bundle (risk, riskReasons), CLI output, Task Record, ledger tasks.risk. Tests: 8 unit rule cases + integration (low/high/blocked in bundle+ledger, hint elevation, blocked on .env*). -->
-- [ ] 4.2 Low/medium: cheap-first bounded retry; high: configured strong tier или needs_review.
-- [ ] 4.3 Эскалация только после воспроизводимых fail-сигналов; на чистом состоянии, с отдельной историей затрат.
-- [ ] 4.4 Сохранять diff и ошибки от неудачных попыток, не переносить неконтролируемое состояние.
+- [x] 4.2 Low/medium: cheap-first bounded retry; high: configured strong tier или needs_review.
+  <!-- Evidence: policy-engine/cascade.ts planNextAttempt — deterministic planner: low/medium → cheap-first; high → strong tier immediately if configured, otherwise needs_review (never cheap-first, never fabricated success); cheap retry budget (maxCheapRetries counts retries after the first attempt); total attempt budget hard-bound → needs_review. Policy layer only: wiring to a real engine lands with Phase 3 (3.4–3.6). Tests: cascade.test.ts (13 rule cases). -->
+- [x] 4.3 Эскалация только после воспроизводимых fail-сигналов; на чистом состоянии, с отдельной историей затрат.
+  <!-- Evidence: cascade.ts — escalation requires the same failure signature in ≥2 attempts OR an exhausted cheap-retry budget; blocking signatures (protected-path/secret) stop retries immediately; every plan returns freshWorkspace:true — retries/escalation always start from a fresh clone (isolated-runner/workspace.ts); cost history stays per-attempt in the ledger attempts table. Tests: reproducible-escalation and fresh-workspace cases. -->
+- [x] 4.4 Сохранять diff и ошибки от неудачных попыток, не переносить неконтролируемое состояние.
+  <!-- Evidence: isolated-runner/workspace.ts captureFailedAttempt — changed-file list (tracked + untracked) and full patch (incl. untracked via --no-index) written into evidence/failed-attempts/<attemptId>/ BEFORE the workspace is discarded; workspaces are never reused (fresh clone per attempt). Test: capture-then-discard preserves artifacts. -->
 - [ ] 4.5 Тесты на broken tool calls, model timeout, budget exhaustion, context limits, provider unavailability.
 
 ## Phase 5 — Evidence and evolution evaluation
