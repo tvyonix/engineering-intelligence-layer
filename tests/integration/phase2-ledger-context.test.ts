@@ -62,7 +62,7 @@ policy:
     const evidence = JSON.parse(await readFile(join(evidenceDir, 'evidence.json'), 'utf8'));
     expect(evidence.risk).toBe('low');
 
-    const ledger = openLedger(dbPath);
+    const ledger = await openLedger(dbPath);
     try {
       expect(listAppliedMigrations(ledger).map((m) => m.name)).toContain('core-tables');
       const task = ledger.db.prepare('SELECT * FROM tasks WHERE id = ?').get('ledger-task') as Record<string, unknown>;
@@ -127,7 +127,7 @@ policy:
     expect(evidence.riskReasons.join('\n')).toContain("risk hint elevates: 'touches session handling'");
     expect(out.messages.some((m) => m.includes('risk: high'))).toBe(true);
 
-    const ledger = openLedger(dbPath);
+    const ledger = await openLedger(dbPath);
     try {
       const task = ledger.db.prepare('SELECT risk FROM tasks WHERE id = ?').get('risk-task') as Record<string, unknown>;
       expect(task?.risk).toBe('high');
@@ -161,7 +161,7 @@ policy:
     expect(blocked.exitCode).toBe(1);
     const blockedEvidence = JSON.parse(await readFile(join(repo.parent, 'ev-blocked', 'evidence.json'), 'utf8'));
     expect(blockedEvidence.risk).toBe('blocked');
-    const ledger2 = openLedger(dbPath);
+    const ledger2 = await openLedger(dbPath);
     try {
       const task = ledger2.db.prepare('SELECT risk FROM tasks WHERE id = ?').get('risk-blocked') as Record<string, unknown>;
       expect(task?.risk).toBe('blocked');

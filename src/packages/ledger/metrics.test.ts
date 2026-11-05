@@ -11,7 +11,7 @@ let dir: string;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'eil-metrics-'));
-  ledger = openLedger(join(dir, 'metrics.db'));
+  ledger = await openLedger(join(dir, 'metrics.db'));
 });
 
 afterEach(async () => {

@@ -20,7 +20,7 @@ let dir: string;
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'eil-ledger-'));
-  ledger = openLedger(join(dir, 'ledger.db'));
+  ledger = await openLedger(join(dir, 'ledger.db'));
 });
 
 afterEach(async () => {

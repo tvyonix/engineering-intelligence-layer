@@ -202,7 +202,7 @@ policy:
     expect(benign.evidence.verdict).toBe(injected.evidence.verdict);
     // And the payload is present only as inert text in the diff artifact —
     // it never triggered any action (no execution happened by construction).
-    const ledgerProbe = openLedger(':memory:');
+    const ledgerProbe = await openLedger(':memory:');
     closeLedger(ledgerProbe);
   });
 });

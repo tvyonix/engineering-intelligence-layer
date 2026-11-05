@@ -64,7 +64,7 @@ policy:
     const dbPath = join(repo.parent, 'accept.db');
     await seedTaskWithCheck(dbPath, 'accept-task');
 
-    const ledgerBefore = openLedger(dbPath);
+    const ledgerBefore = await openLedger(dbPath);
     const statusBefore = (ledgerBefore.db.prepare('SELECT status FROM tasks WHERE id = ?').get('accept-task') as Record<string, unknown>)?.status;
     closeLedger(ledgerBefore);
     expect(statusBefore).toBe('needs_review'); // gates passed but NOT accepted
@@ -84,7 +84,7 @@ policy:
     expect(payload.status).toBe('accepted');
     expect(payload.previousStatus).toBe('needs_review');
 
-    const ledger = openLedger(dbPath);
+    const ledger = await openLedger(dbPath);
     try {
       const task = ledger.db.prepare('SELECT status FROM tasks WHERE id = ?').get('accept-task') as Record<string, unknown>;
       expect(task?.status).toBe('accepted');
@@ -104,7 +104,7 @@ policy:
     expect(rejected.exitCode).toBe(0);
     const payload = JSON.parse(rejected.json as string);
     expect(payload.status).toBe('rejected');
-    const ledger = openLedger(dbPath);
+    const ledger = await openLedger(dbPath);
     try {
       const review = ledger.db.prepare('SELECT accepted, changes_requested FROM reviews WHERE task_id = ?').get('reject-task') as Record<string, unknown>;
       expect(review?.accepted).toBe(0);

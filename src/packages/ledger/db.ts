@@ -1,9 +1,9 @@
-import Database from 'better-sqlite3';
+import type DatabaseType from 'better-sqlite3';
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 export interface Ledger {
-  db: Database.Database;
+  db: DatabaseType.Database;
   path: string;
 }
 
@@ -102,10 +102,18 @@ CREATE INDEX idx_regressions_task ON regressions(task_id);
   },
 ];
 
-export function openLedger(dbPath: string): Ledger {
+
+/**
+ * Opens (and migrates) the ledger. The native better-sqlite3 module is
+ * loaded LAZILY so the check path never requires native dependencies —
+ * `eil check` stays portable to any machine/container without native
+ * builds (found during the sandbox security test, task 3.2/T7).
+ */
+export async function openLedger(dbPath: string): Promise<Ledger> {
   if (dbPath !== ':memory:') {
     mkdirSync(dirname(join(dbPath, '.')), { recursive: true });
   }
+  const { default: Database } = await import('better-sqlite3');
   const db = new Database(dbPath);
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
@@ -113,7 +121,7 @@ export function openLedger(dbPath: string): Ledger {
   return { db, path: dbPath };
 }
 
-export function applyMigrations(db: Database.Database): void {
+export function applyMigrations(db: DatabaseType.Database): void {
   db.exec(
     `CREATE TABLE IF NOT EXISTS schema_migrations (
   id INTEGER PRIMARY KEY,
@@ -147,3 +155,5 @@ export function listAppliedMigrations(ledger: Ledger): { id: number; name: strin
     .prepare('SELECT id, name, applied_at FROM schema_migrations ORDER BY id')
     .all() as { id: number; name: string; applied_at: string }[];
 }
+
+export type SqliteDatabase = DatabaseType.Database;

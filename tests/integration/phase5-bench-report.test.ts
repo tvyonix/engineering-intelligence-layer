@@ -252,7 +252,7 @@ quality:
       expect(outcome.checkExitCode).toBe(0);
     }
 
-    const ledger = openLedger(dbPath);
+    const ledger = await openLedger(dbPath);
     try {
       const benchRuns = ledger.db.prepare('SELECT * FROM bench_runs').all() as Record<string, unknown>[];
       expect(benchRuns).toHaveLength(2);
@@ -288,7 +288,7 @@ quality:
       expect(outcome.status).toBe('pending');
       expect(outcome.notes.join(' ')).toContain('no engine command configured');
     }
-    const ledger = openLedger(dbPath);
+    const ledger = await openLedger(dbPath);
     try {
       const attempts = ledger.db.prepare('SELECT status FROM attempts').all() as Record<string, unknown>[];
       expect(attempts.every((a) => a.status === 'pending')).toBe(true);
@@ -365,7 +365,7 @@ quality:
     expect(limitations).toContain('do not generalize');
 
     // Ledger: one bench_run row per repetition.
-    const ledger = openLedger(dbPath);
+    const ledger = await openLedger(dbPath);
     try {
       const benchRuns = ledger.db.prepare('SELECT * FROM bench_runs').all() as Record<string, unknown>[];
       expect(benchRuns).toHaveLength(3);

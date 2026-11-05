@@ -16,11 +16,14 @@ import { defaultPolicy, parsePolicy, toResolvedPolicy } from '../../packages/con
 import { collectDiff, extractCommitSnapshot, gitFailure, removeSnapshot, resolveCommit, runGit } from '../../packages/diff-inspector/git.js';
 import { buildEvidenceBundle, FsEvidenceWriter, renderSummaryMarkdown, writeEvidenceBundle } from '../../packages/evidence/bundle.js';
 import { buildGateRegistry, computeVerdict, runGates, selectGates } from '../../packages/quality-gates/run-gates.js';
-import { runImpact, runLedger, runReferences, runSymbols, runReport, runBenchCommand, runAccept, runMetrics } from './context-commands.js';
 import { openLedger, closeLedger } from '../../packages/ledger/db.js';
 import { recordCheckRun } from '../../packages/ledger/records.js';
 import { renderTaskRecordMarkdown } from '../../packages/evidence/task-record.js';
 import { classifyTaskRisk } from '../../packages/policy-engine/risk.js';
+
+// Context/bench/report/accept/metrics commands are imported LAZILY inside
+// their branches: check mode must not load ts-morph or the native ledger
+// module (portability of check to containers — task 3.2/T7).
 
 export const EIL_VERSION = '0.2.0-alpha.0';
 
@@ -270,7 +273,7 @@ export async function runCheck(options: CheckOptions): Promise<CheckRunOutput> {
   // does not change the check verdict — it is never a quality gate.
   if (options.ledger !== undefined) {
     try {
-      const ledger = openLedger(options.ledger);
+      const ledger = await openLedger(options.ledger);
       const recorded = recordCheckRun(ledger, {
         taskId: contract.id,
         baseCommit,
@@ -432,6 +435,11 @@ export async function main(argv: string[]): Promise<0 | 1 | 2> {
     if (args['json'] === true && result.bundleJson !== null) {
       console.log(result.bundleJson);
     }
+    // JSON mode suppresses the human summary but must never swallow errors:
+    // on failure, print the reason lines to stderr.
+    if (result.exitCode !== 0 && args['json'] === true) {
+      for (const message of result.messages) console.error(message);
+    }
     return result.exitCode;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -441,6 +449,7 @@ export async function main(argv: string[]): Promise<0 | 1 | 2> {
 }
 
 async function contextCommand(command: string, args: ParsedArgs): Promise<0 | 1 | 2> {
+  const { runImpact, runLedger, runReferences, runSymbols, runReport, runBenchCommand, runAccept, runMetrics } = await import('./context-commands.js');
   const repo = args['repo'];
   if (command !== 'ledger' && typeof repo !== 'string') {
     console.error(`eil: error: --repo is required for '${command}'`);

@@ -134,7 +134,7 @@ export async function runLedger(options: { quiet?: boolean; action: string; db: 
   const messages: string[] = [];
   if (options.action === 'init') {
     try {
-      const ledger = openLedger(options.db);
+      const ledger = await openLedger(options.db);
       const migrations = listAppliedMigrations(ledger);
       closeLedger(ledger);
       const payload = { db: options.db, migrations };
@@ -147,7 +147,7 @@ export async function runLedger(options: { quiet?: boolean; action: string; db: 
   if (options.action === 'export') {
     if (options.out === undefined) return fail(messages, '--out is required for ledger export');
     try {
-      const ledger = openLedger(options.db);
+      const ledger = await openLedger(options.db);
       const files = exportJsonl(ledger, options.out);
       closeLedger(ledger);
       return output({ out: options.out, files });
@@ -228,7 +228,7 @@ export async function runAccept(options: {
   const messages: string[] = [];
   let ledger;
   try {
-    ledger = openLedger(options.db);
+    ledger = await openLedger(options.db);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return fail(messages, `cannot open ledger: ${message}`);
@@ -277,7 +277,7 @@ export async function runMetrics(options: {
   const messages: string[] = [];
   let ledger;
   try {
-    ledger = openLedger(options.db);
+    ledger = await openLedger(options.db);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return fail(messages, `cannot open ledger: ${message}`);

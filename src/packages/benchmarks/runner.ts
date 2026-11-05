@@ -207,7 +207,7 @@ export async function runBench(options: BenchOptions): Promise<BenchRunOutput> {
 
   let ledger: Ledger | null = null;
   if (options.ledger !== undefined) {
-    ledger = openLedger(options.ledger);
+    ledger = await openLedger(options.ledger);
   }
 
   const outcomes: BenchStepOutcome[] = [];
