@@ -1,0 +1,16 @@
+version: 1
+id: eil-self-check
+baseCommit: "root"
+description: "EIL dogfooding: verify the layer's own architecture with its own gates"
+scope:
+  allow:
+    - "**"
+  protect:
+    - ".git/**"
+acceptance:
+  - id: architecture
+    description: "No forbidden imports and no new import cycles since the root commit"
+    command: "npm run ci"
+policy:
+  maxAttempts: 1
+  noNewDependencies: true

@@ -1,0 +1,22 @@
+version: 1
+# EIL's own engineering policy — enforced on this repository by the
+# self-check (scripts/self-check.mjs). The rules encode the modular
+# monolith boundaries from design.md §2.
+quality:
+  required:
+    - "path-scope"
+    - "import-boundaries"
+  commands:
+    # Placeholder defaults; the self-check does not execute command gates
+    # (they are not required here), kept for operator reference.
+    types: "npx --no-install tsc --noEmit --pretty false"
+    lint: "npx --no-install eslint . --format json"
+boundaries:
+  forbiddenImports:
+    # The packages layer must never depend on the CLI app layer.
+    - from: "src/packages/**"
+      disallow: ["src/apps/**"]
+    # Tests may import sources; sources must never import tests.
+    - from: "src/**"
+      disallow: ["tests/**"]
+  forbidNewCycles: true

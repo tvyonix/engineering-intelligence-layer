@@ -14,4 +14,14 @@ export default tseslint.config(
     files: ['**/*.test.ts'],
     rules: {},
   },
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        URL: 'readonly',
+        console: 'readonly',
+        process: 'readonly',
+      },
+    },
+  },
 );

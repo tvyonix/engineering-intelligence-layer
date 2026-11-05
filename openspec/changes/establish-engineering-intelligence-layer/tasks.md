@@ -87,9 +87,15 @@
 
 ## Release gates for v0.2
 
-- [ ] `eil check` работает полностью без агента и внешнего model API.
-- [ ] Обязательный gate fail/error блокирует принятие; политика неизменна для дешёвого и сильного tier.
-- [ ] Провайдер не получает secrets, непросмотренные proprietary files не отправляются за пределы разрешённых интеграций.
-- [ ] Запуск не может менять исходный рабочий каталог и основную ветку без явного разрешения.
-- [ ] Есть воспроизводимый эксперимент A/B/C; результат честно отражает неизвестную стоимость и human-pending задачи.
-- [ ] Нет новых запрещённых архитектурных зависимостей внутри самого EIL.
+- [x] `eil check` работает полностью без агента и внешнего model API.
+  <!-- Evidence: docs/release-gates-v0.2.md §1 — no network calls in src; check uses read-only git + file reads only. -->
+- [x] Обязательный gate fail/error блокирует принятие; политика неизменна для дешёвого и сильного tier.
+  <!-- Evidence: docs/release-gates-v0.2.md §2 — computeVerdict fail-closed semantics; single execution policy, no tier parameterization in runtime (tiers arrive with Phase 3; final verification noted as pending 1.7). -->
+- [x] Провайдер не получает secrets, непросмотренные proprietary files не отправляются за пределы разрешённых интеграций.
+  <!-- Evidence: docs/release-gates-v0.2.md §3 — check mode transmits nothing externally; symbols return header-only signatures; ledger/JSONL schema has no source-code columns; log redaction (3.3) pending Phase 3 with commands still restricted to vetted fixtures. -->
+- [x] Запуск не может менять исходный рабочий каталог и основную ветку без явного разрешения.
+  <!-- Evidence: docs/release-gates-v0.2.md §4 — read-only git ops; untracked patch via --no-index; bench runs in independent clones; GIT_* env stripped. -->
+- [x] Есть воспроизводимый эксперимент A/B/C; результат честно отражает неизвестную стоимость и human-pending задачи.
+  <!-- Evidence: docs/release-gates-v0.2.md §5 — eil bench --repeat with pairing/comparability checks, reproducibility verification, pending attempts, UNAVAILABLE metrics, published LIMITATIONS.md; real-engine repetitions land with Phase 3 (1.7). -->
+- [x] Нет новых запрещённых архитектурных зависимостей внутри самого EIL.
+  <!-- Evidence: docs/release-gates-v0.2.md §6 — npm run selfcheck (part of CI): eil check on EIL itself, ops/self-policy.yaml (packages→apps forbidden, src→tests forbidden, no new cycles since root commit); the found violation benchmarks→apps was fixed via dependency injection. .eil-self-check/latest/evidence.json. -->

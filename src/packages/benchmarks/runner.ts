@@ -9,8 +9,27 @@ import { openLedger, closeLedger, type Ledger } from '../ledger/db.js';
 import { recordAttempt, recordBenchRun } from '../ledger/records.js';
 import { isExecutionPermitted } from '../quality-gates/execution-policy.js';
 import { runCommand } from '../quality-gates/command-runner.js';
-import { runCheck } from '../../apps/cli/main.js';
 import { defaultPolicy, parsePolicy, toResolvedPolicy, type ResolvedPolicy } from '../contracts/policy.js';
+
+/**
+ * Checker injected by the CLI layer (dependency inversion): the benchmarks
+ * package must not depend on apps/ — EIL's own import-boundaries rule
+ * (dogfooded self-check, ops/self-policy.yaml).
+ */
+export interface BenchCheckRequest {
+  repo: string;
+  task: string;
+  policy?: string;
+  base: string;
+  out: string;
+}
+
+export interface BenchCheckResult {
+  exitCode: 0 | 1 | 2;
+  evidenceDir: string | null;
+}
+
+export type BenchChecker = (request: BenchCheckRequest) => Promise<BenchCheckResult>;
 import { parseBenchmarkManifest, analyzeComparability, type BenchmarkManifest, type ParsedManifest } from './manifest.js';
 
 const execFileP = promisify(execFile);
@@ -61,6 +80,8 @@ export interface BenchOptions {
   ledger?: string;
   /** Independent repetitions of the whole run (task 5.6: reproducibility smoke). */
   repeat?: number;
+  /** Injected by the CLI layer; without it, per-step checks are skipped with an explicit note. */
+  check?: BenchChecker;
   quiet?: boolean;
 }
 
@@ -226,6 +247,7 @@ export async function runBench(options: BenchOptions): Promise<BenchRunOutput> {
       try {
         for (const step of manifest.steps) {
           const notes: string[] = [];
+          let checkVerdict: string | undefined;
           const taskFile = join(manifestDir, step.taskFile ?? variant.taskFile ?? '');
           const policyFile = join(manifestDir, step.policyFile ?? variant.policyFile ?? '');
           const hasCheck = (step.taskFile ?? variant.taskFile) !== undefined;
@@ -313,18 +335,22 @@ export async function runBench(options: BenchOptions): Promise<BenchRunOutput> {
           }
 
           // Post-step check with EIL gates when the manifest provides a contract.
-          if (hasCheck) {
-            const check = await runCheck({
+          if (hasCheck && options.check !== undefined) {
+            const check = await options.check({
               repo: workspace.dir,
               task: taskFile,
               policy: policyFile,
               base: baseCommit,
               out: join(options.out, `rep-${repetition}`, variant.id, `step-${step.id}`),
-              quiet: true,
             });
-            const checkBundleRaw = await readFile(join(check.evidenceDir as string, 'evidence.json'), 'utf8');
-            const checkBundle = JSON.parse(checkBundleRaw) as { verdict: string };
-            notes.push(`eil check: verdict ${checkBundle.verdict} (exit ${check.exitCode})`);
+            if (check.evidenceDir === null) {
+              notes.push(`eil check: failed before evidence was written (exit ${check.exitCode})`);
+            } else {
+              const checkBundleRaw = await readFile(join(check.evidenceDir, 'evidence.json'), 'utf8');
+              const checkBundle = JSON.parse(checkBundleRaw) as { verdict: string };
+              notes.push(`eil check: verdict ${checkBundle.verdict} (exit ${check.exitCode})`);
+              checkVerdict = checkBundle.verdict;
+            }
             outcomes.push({
               variant: variant.id,
               step: step.id,
@@ -333,11 +359,14 @@ export async function runBench(options: BenchOptions): Promise<BenchRunOutput> {
               // variant stays pending even when the check passes.
               status,
               commandExitCode,
-              checkVerdict: checkBundle.verdict,
+              checkVerdict,
               checkExitCode: check.exitCode,
               notes,
             });
             continue;
+          }
+          if (hasCheck && options.check === undefined) {
+            notes.push('eil check skipped: no checker injected into the bench runner');
           }
 
           outcomes.push({ variant: variant.id, step: step.id, repetition, status, commandExitCode, notes });

@@ -235,6 +235,10 @@ quality:
       out: join(fixture.parent, 'bench-out'),
       policy: join(fixture.parent, 'bench-policy.yaml'),
       ledger: dbPath,
+      check: async (request) => {
+        const check = await runCheck({ ...request, quiet: true });
+        return { exitCode: check.exitCode, evidenceDir: check.evidenceDir };
+      },
       quiet: true,
     });
 
@@ -321,6 +325,10 @@ quality:
       policy: join(fixture.parent, 'bench-policy.yaml'),
       ledger: dbPath,
       repeat: 3,
+      check: async (request) => {
+        const check = await runCheck({ ...request, quiet: true });
+        return { exitCode: check.exitCode, evidenceDir: check.evidenceDir };
+      },
       quiet: true,
     });
 

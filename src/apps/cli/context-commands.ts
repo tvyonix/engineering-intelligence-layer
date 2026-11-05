@@ -11,6 +11,7 @@ import { exportJsonl, recordReview } from '../../packages/ledger/records.js';
 import { computeBenchMetrics, renderMetricsMarkdown } from '../../packages/ledger/metrics.js';
 import { buildPrReport } from '../../packages/evidence/pr-report.js';
 import { runBench } from '../../packages/benchmarks/runner.js';
+import { runCheck } from './main.js';
 
 export interface ContextCommandOutput {
   exitCode: 0 | 1 | 2;
@@ -194,6 +195,11 @@ export async function runBenchCommand(options: {
     out: options.out,
     ledger: options.db,
     repeat: options.repeat,
+    // Dependency inversion: the CLI layer supplies the real checker.
+    check: async (request) => {
+      const check = await runCheck({ ...request, quiet: true });
+      return { exitCode: check.exitCode, evidenceDir: check.evidenceDir };
+    },
     quiet: options.quiet,
   });
   return {

@@ -1,7 +1,7 @@
 {
   "name": "eil",
   "version": "0.2.0-alpha.0",
-  "description": "Engineering Intelligence Layer — deterministic diff policy, quality gates and evidence around existing coding agents. Spec: openspec/changes/establish-engineering-intelligence-layer",
+  "description": "Engineering Intelligence Layer \u2014 deterministic diff policy, quality gates and evidence around existing coding agents. Spec: openspec/changes/establish-engineering-intelligence-layer",
   "type": "module",
   "private": true,
   "engines": {
@@ -15,7 +15,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
     "lint": "eslint .",
-    "ci": "npm run lint && npm run typecheck && npm run test && npm run build"
+    "ci": "npm run lint && npm run typecheck && npm run test && npm run build && npm run selfcheck",
+    "selfcheck": "node scripts/self-check.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
