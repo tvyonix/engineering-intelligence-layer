@@ -5,6 +5,7 @@ import { contentGate } from './content-gate.js';
 import { parseEslintJsonOutput, parseTscOutput } from './diagnostics.js';
 import { IMPORT_BOUNDARIES_GATE_ID, importBoundariesGate } from './import-boundaries-gate.js';
 import { PATH_SCOPE_GATE_ID, pathScopeGate } from './path-scope-gate.js';
+import { SECRETS_SCAN_GATE_ID, secretsScanGate } from './secrets-scan-gate.js';
 import { TESTS_GATE_ID, testsGate } from './tests-gate.js';
 import type { Gate, GateContext, GateResult } from './types.js';
 import type { Violation } from '../policy-engine/violations.js';
@@ -26,6 +27,7 @@ export const KNOWN_GATE_IDS: readonly string[] = [
   IMPORT_BOUNDARIES_GATE_ID,
   API_COMPAT_GATE_ID,
   DS_CONFORMANCE_GATE_ID,
+  SECRETS_SCAN_GATE_ID,
 ] as const;
 
 export function buildGateRegistry(): Gate[] {
@@ -46,6 +48,7 @@ export function buildGateRegistry(): Gate[] {
     importBoundariesGate(),
     apiCompatGate(),
     dsConformanceGate(),
+    secretsScanGate(),
   ];
 }
 

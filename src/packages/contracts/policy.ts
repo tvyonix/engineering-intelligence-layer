@@ -104,7 +104,7 @@ export interface ResolvedPolicy {
   };
 }
 
-export const DEFAULT_REQUIRED_GATES: readonly string[] = ['path-scope', 'dependency-policy', 'types', 'lint', 'tests'];
+export const DEFAULT_REQUIRED_GATES: readonly string[] = ['path-scope', 'dependency-policy', 'secrets-scan', 'types', 'lint', 'tests'];
 
 export function defaultPolicy(): ResolvedPolicy {
   return { source: 'default', quality: { required: [...DEFAULT_REQUIRED_GATES] } };

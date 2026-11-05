@@ -70,6 +70,8 @@ export function classifyTaskRisk(input: {
   for (const violation of input.violations) {
     if (violation.rule === 'protected-path') {
       elevate('blocked', `protected path touched: ${violation.path}`);
+    } else if (violation.rule === 'known-secret') {
+      elevate('blocked', `potential secret in the diff: ${violation.path} (design.md §5: known secrets exfiltration is blocked)`);
     } else if (violation.rule === 'symlink-escape' || violation.rule === 'symlink-unresolvable' || violation.rule === 'path-format') {
       elevate('high', `${violation.rule}: ${violation.path} — suspicious path shape, containment could not be proven`);
     } else if (violation.rule === 'dependency-manifest-changed') {
