@@ -183,6 +183,7 @@ export async function runBenchCommand(options: {
   policy?: string;
   out: string;
   db?: string;
+  repeat?: number;
   quiet?: boolean;
 }): Promise<ContextCommandOutput> {
   const result = await runBench({
@@ -192,6 +193,7 @@ export async function runBenchCommand(options: {
     policy: options.policy,
     out: options.out,
     ledger: options.db,
+    repeat: options.repeat,
     quiet: options.quiet,
   });
   return {

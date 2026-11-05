@@ -1,4 +1,4 @@
-import { readFile, realpath, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, readFile, realpath, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -59,12 +59,16 @@ export interface BenchOptions {
   policy?: string;
   out: string;
   ledger?: string;
+  /** Independent repetitions of the whole run (task 5.6: reproducibility smoke). */
+  repeat?: number;
   quiet?: boolean;
 }
 
 export interface BenchStepOutcome {
   variant: string;
   step: number;
+  /** 1-based independent repetition index (task 5.6). */
+  repetition: number;
   /** 'executed' | 'pending' (no engine command) | 'failed' (command or check failed) */
   status: 'executed' | 'pending' | 'failed';
   commandExitCode?: number | null;
@@ -82,7 +86,10 @@ export interface BenchRunOutput {
     comparable: boolean;
     comparabilityReasons: string[];
     metricsHonesty: string[];
+    repetitions: number;
+    reproducible: boolean;
     outcomes: BenchStepOutcome[];
+    artifacts: { results: string; samples: string; limitations: string; logsDirectory: string };
   } | null;
 }
 
@@ -185,20 +192,22 @@ export async function runBench(options: BenchOptions): Promise<BenchRunOutput> {
   const outcomes: BenchStepOutcome[] = [];
   const manifestDir = (options.manifest.split('/').slice(0, -1).join('/') || '.');
   const startedAt = new Date().toISOString();
+  const repeat = Math.max(1, Math.min(options.repeat ?? 1, 25));
 
   try {
-    log(out, quiet, `eil: bench '${manifest.name}': ${manifest.variants.length} variant(s) × ${manifest.steps.length} step(s), base ${baseCommit.slice(0, 12)}`);
+    log(out, quiet, `eil: bench '${manifest.name}': ${manifest.variants.length} variant(s) × ${manifest.steps.length} step(s) × ${repeat} repetition(s), base ${baseCommit.slice(0, 12)}`);
     for (const reason of comparability.reasons) {
       log(out, quiet, `eil: bench comparability: ${reason}`);
     }
 
+    for (let repetition = 1; repetition <= repeat; repetition++) {
     for (const variant of manifest.variants) {
       // Fresh identical workspace per variant; steps accumulate in it.
       const workspace = await createBenchWorkspace(options.repo, baseCommit);
       if (!workspace.ok) {
         log(out, quiet, `eil: error: variant ${variant.id}: ${workspace.reason}`);
         for (const step of manifest.steps) {
-          outcomes.push({ variant: variant.id, step: step.id, status: 'failed', notes: [workspace.reason] });
+          outcomes.push({ variant: variant.id, step: step.id, repetition, status: 'failed', notes: [workspace.reason] });
         }
         continue;
       }
@@ -240,15 +249,34 @@ export async function runBench(options: BenchOptions): Promise<BenchRunOutput> {
                   policyVersion: policy.source,
                 });
               }
-              outcomes.push({ variant: variant.id, step: step.id, status, notes });
+              outcomes.push({ variant: variant.id, step: step.id, repetition, status, notes });
               continue;
             }
-            log(out, quiet, `eil: bench ${variant.id} step ${step.id}: run ${JSON.stringify(variant.command)}`);
+            log(out, quiet, `eil: bench rep ${repetition} ${variant.id} step ${step.id}: run ${JSON.stringify(variant.command)}`);
             const run = await runCommand(variant.command.replace('{step}', String(step.id)), workspace.dir, {
               timeoutMs: policy.execution?.timeoutMs ?? 120_000,
               maxOutputBytes: policy.execution?.maxOutputBytes ?? 1024 * 1024,
             });
             commandExitCode = run.exitCode;
+            // Task 5.6: publish the full command log (probe output, failures,
+            // regression attribution) next to the samples.
+            const logDir = join(options.out, 'logs', `rep-${repetition}`, variant.id);
+            await mkdir(logDir, { recursive: true });
+            await writeFile(
+              join(logDir, `step-${step.id}.log`),
+              [
+                `# command: ${variant.command.replace('{step}', String(step.id))}`,
+                `# exitCode: ${run.exitCode === null ? `signal ${run.signal}` : run.exitCode}`,
+                `# timedOut: ${run.timedOut}; capKilled: ${run.capKilled}; durationMs: ${run.durationMs}`,
+                '',
+                '--- stdout ---',
+                run.stdout,
+                '--- stderr ---',
+                run.stderr,
+                '',
+              ].join('\n'),
+              'utf8',
+            );
             if (run.exitCode !== 0 || run.timedOut || run.capKilled || run.signal !== null) {
               status = 'failed';
               notes.push(`command failed: exit=${run.exitCode === null ? `signal ${run.signal}` : run.exitCode}${run.timedOut ? ' (timeout)' : ''}`);
@@ -291,7 +319,7 @@ export async function runBench(options: BenchOptions): Promise<BenchRunOutput> {
               task: taskFile,
               policy: policyFile,
               base: baseCommit,
-              out: join(options.out, variant.id, `step-${step.id}`),
+              out: join(options.out, `rep-${repetition}`, variant.id, `step-${step.id}`),
               quiet: true,
             });
             const checkBundleRaw = await readFile(join(check.evidenceDir as string, 'evidence.json'), 'utf8');
@@ -300,6 +328,7 @@ export async function runBench(options: BenchOptions): Promise<BenchRunOutput> {
             outcomes.push({
               variant: variant.id,
               step: step.id,
+              repetition,
               // The engine status is never upgraded by the check: a pending
               // variant stays pending even when the check passes.
               status,
@@ -311,14 +340,15 @@ export async function runBench(options: BenchOptions): Promise<BenchRunOutput> {
             continue;
           }
 
-          outcomes.push({ variant: variant.id, step: step.id, status, commandExitCode, notes });
+          outcomes.push({ variant: variant.id, step: step.id, repetition, status, commandExitCode, notes });
         }
       } finally {
         await removeBenchWorkspace(workspace.dir);
       }
       if (benchRunId !== null && !quiet) {
-        log(out, quiet, `eil: bench variant ${variant.id}: bench_run row ${benchRunId}`);
+        log(out, quiet, `eil: bench rep ${repetition} variant ${variant.id}: bench_run row ${benchRunId}`);
       }
+    }
     }
   } finally {
     if (ledger !== null) closeLedger(ledger);
@@ -330,19 +360,102 @@ export async function runBench(options: BenchOptions): Promise<BenchRunOutput> {
     'regressions: attribution only from artifact evidence (command/check output); no inferred numbers',
   ];
 
+  // Task 5.6: reproducibility smoke — for a deterministic engine stand-in,
+  // independent repetitions must produce identical outcomes. Any divergence
+  // is reported, never averaged away.
+  const outcomeKey = (o: BenchStepOutcome): string => `${o.variant}#${o.step}`;
+  const byKey = new Map<string, string[]>();
+  for (const outcome of outcomes) {
+    const signature = JSON.stringify([outcome.status, outcome.commandExitCode ?? null, outcome.checkVerdict ?? null, outcome.checkExitCode ?? null]);
+    const list = byKey.get(outcomeKey(outcome)) ?? [];
+    list.push(signature);
+    byKey.set(outcomeKey(outcome), list);
+  }
+  const reproducible = [...byKey.values()].every((signatures) => new Set(signatures).size === 1);
+
+  // Publication artifacts (task 5.6): samples, logs and limitations.
+  const resultsPath = join(options.out, 'results.json');
+  const samplesPath = join(options.out, 'samples', 'bench-samples.jsonl');
+  const limitationsPath = join(options.out, 'LIMITATIONS.md');
+  const logsDir = join(options.out, 'logs');
+  await mkdir(join(options.out, 'samples'), { recursive: true });
+  await mkdir(logsDir, { recursive: true });
+  const failed = outcomes.filter((o) => o.status === 'failed').length;
+  const pending = outcomes.filter((o) => o.status === 'pending').length;
+  const results = {
+    schemaVersion: 1,
+    scenario: manifest.name,
+    baseCommit,
+    seed: manifest.seed ?? null,
+    repetitions: repeat,
+    comparable: comparability.comparable,
+    comparabilityReasons: comparability.reasons,
+    reproducible,
+    counts: { total: outcomes.length, executed: outcomes.length - failed - pending, failed, pending },
+    metricsHonesty,
+    limitationsFile: 'LIMITATIONS.md',
+    outcomes,
+  };
+  await writeFile(resultsPath, `${JSON.stringify(results, null, 2)}\n`, 'utf8');
+  const samples = outcomes
+    .map((o) => JSON.stringify({ repetition: o.repetition, variant: o.variant, step: o.step, status: o.status, commandExitCode: o.commandExitCode ?? null, checkVerdict: o.checkVerdict ?? null, checkExitCode: o.checkExitCode ?? null, notes: o.notes }))
+    .join('\n');
+  await writeFile(samplesPath, samples.length > 0 ? `${samples}\n` : '', 'utf8');
+  await writeFile(limitationsPath, renderLimitations(manifest, repeat, outcomes), 'utf8');
+
   out.summary = {
     scenario: manifest.name,
     baseCommit,
     comparable: comparability.comparable,
     comparabilityReasons: comparability.reasons,
     metricsHonesty,
+    repetitions: repeat,
+    reproducible,
     outcomes,
+    artifacts: { results: resultsPath, samples: samplesPath, limitations: limitationsPath, logsDirectory: logsDir },
   };
-  const failed = outcomes.filter((o) => o.status === 'failed').length;
-  const pending = outcomes.filter((o) => o.status === 'pending').length;
   log(out, quiet, `eil: bench done: ${outcomes.length} step run(s): ${outcomes.length - failed - pending} executed, ${failed} failed, ${pending} pending (no engine)`);
+  log(out, quiet, `eil: bench reproducible across ${repeat} repetition(s): ${reproducible ? 'yes' : 'NO — divergent outcomes, see results.json'}`);
+  log(out, quiet, `eil: bench artifacts: ${resultsPath} (samples, LIMITATIONS.md, logs/)`);
   out.exitCode = failed > 0 ? 1 : 0;
   return out;
+}
+
+/**
+ * Auto-generated honest limitations for a bench run (task 5.6: publish
+ * limitations alongside samples). Never claims more than was measured.
+ */
+function renderLimitations(manifest: BenchmarkManifest, repeat: number, outcomes: BenchStepOutcome[]): string {
+  const lines: string[] = [];
+  lines.push(`# Limitations — bench '${manifest.name}'`);
+  lines.push('');
+  lines.push('Read this before citing any number from this run.');
+  lines.push('');
+  lines.push('## Engine');
+  lines.push('');
+  const commandVariants = manifest.variants.filter((v) => v.command !== undefined).map((v) => v.id);
+  if (commandVariants.length > 0) {
+    lines.push(`- Variants with a command (${commandVariants.join(', ')}) execute an OPERATOR-SUPPLIED script, not an integrated coding agent. In the current smoke suite the script is a deterministic fixture stand-in (bench-step.mjs) — it demonstrates the harness, not agent behaviour.`);
+  } else {
+    lines.push('- No variant executed an engine command: all attempts are recorded as pending; nothing was measured.');
+  }
+  lines.push('- No Pi SDK / agent integration has run at this stage (Phase 3 is gated on the Tier-1 security review, task 1.7).');
+  lines.push('');
+  lines.push('## Metrics');
+  lines.push('');
+  lines.push('- No human acceptance events exist for bench tasks → Cost per Accepted Task and acceptance_rate are UNAVAILABLE, not zero.');
+  lines.push('- Attempt costs are unknown (cost_kind unknown) → Cascade Waste and REC have no measured values here.');
+  lines.push('- Regression attribution comes only from probe output (FAIL step N lines); no inferred numbers.');
+  lines.push('');
+  lines.push('## Scope');
+  lines.push('');
+  lines.push(`- Single fixture repository (${manifest.repoFixture}); ${manifest.steps.length} sequential steps; ${manifest.variants.length} variant(s); ${repeat} independent repetition(s).`);
+  lines.push('- The fixture is deterministic: repeated runs are EXPECTED to be identical. Reproducibility here verifies the harness, not statistical stability of real engines.');
+  lines.push('- Results do not generalize to real repositories, real models or human review effort.');
+  lines.push('');
+  lines.push(`- Outcomes recorded: ${outcomes.length} (${outcomes.filter((o) => o.status === 'executed').length} executed, ${outcomes.filter((o) => o.status === 'failed').length} failed, ${outcomes.filter((o) => o.status === 'pending').length} pending).`);
+  lines.push('');
+  return lines.join('\n');
 }
 
 function taskId(scenario: string, variant: string, step: number): string {

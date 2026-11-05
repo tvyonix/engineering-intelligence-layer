@@ -364,7 +364,7 @@ Exit codes:
 type ParsedArgs = { _: string[] } & { [key: string]: string | boolean | string[] };
 
 function parseArgs(argv: string[]): ParsedArgs {
-  const valueFlags = new Set(['--repo', '--task', '--base', '--policy', '--out', '--ledger', '--file', '--name', '--db', '--evidence', '--manifest', '--reviewer', '--duration-seconds', '--changes-requested', '--scenario', '--variant', '--control']);
+  const valueFlags = new Set(['--repo', '--task', '--base', '--policy', '--out', '--ledger', '--file', '--name', '--db', '--evidence', '--manifest', '--reviewer', '--duration-seconds', '--changes-requested', '--scenario', '--variant', '--control', '--repeat']);
   const parsed: ParsedArgs = { _: [] as string[] };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] as string;
@@ -501,6 +501,7 @@ async function contextCommand(command: string, args: ParsedArgs): Promise<0 | 1 
         policy: typeof args['policy'] === 'string' ? args['policy'] : undefined,
         out,
         db: typeof args['db'] === 'string' ? args['db'] : undefined,
+        repeat: typeof args['repeat'] === 'string' ? Number(args['repeat']) || undefined : undefined,
         quiet: args['json'] === true,
       });
       if (!quietArg(args)) for (const message of result.messages) console.log(message);

@@ -293,6 +293,81 @@ quality:
     }
   });
 
+  it('task 5.6: repeat runs publish samples, logs, limitations and verify reproducibility', async () => {
+    const manifestPath = await writeManifest([
+      { id: 'B', agent: 'scripted', model: 'fixture', engineeringGates: true, adaptiveRouting: false, command: 'node bench-step.mjs {step}' },
+    ]);
+    const { realpath } = await import('node:fs/promises');
+    await writeFile(
+      join(fixture.parent, 'bench-policy.yaml'),
+      `version: 1
+execution:
+  vettedRepos:
+    - "${await realpath(fixture.root)}"
+  timeoutMs: 60000
+quality:
+  required:
+    - "path-scope"
+`,
+      'utf8',
+    );
+    const dbPath = join(fixture.parent, 'bench.db');
+    const outDir = join(fixture.parent, 'bench-out');
+    const { runBench } = await import('../../src/packages/benchmarks/runner.js');
+    const result = await runBench({
+      manifest: manifestPath,
+      repo: fixture.root,
+      out: outDir,
+      policy: join(fixture.parent, 'bench-policy.yaml'),
+      ledger: dbPath,
+      repeat: 3,
+      quiet: true,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.summary?.repetitions).toBe(3);
+    expect(result.summary?.reproducible).toBe(true);
+    expect(result.summary?.outcomes).toHaveLength(18); // 1 variant × 6 steps × 3 reps
+
+    // Published artifacts.
+    const { existsSync, readFileSync } = await import('node:fs');
+    const resultsPath = join(outDir, 'results.json');
+    expect(existsSync(resultsPath)).toBe(true);
+    const results = JSON.parse(readFileSync(resultsPath, 'utf8'));
+    expect(results.repetitions).toBe(3);
+    expect(results.reproducible).toBe(true);
+    expect(results.counts).toEqual({ total: 18, executed: 18, failed: 0, pending: 0 });
+
+    const samplesPath = join(outDir, 'samples', 'bench-samples.jsonl');
+    const sampleLines = readFileSync(samplesPath, 'utf8').trim().split('\n');
+    expect(sampleLines).toHaveLength(18);
+    const parsedSamples = sampleLines.map((l) => JSON.parse(l));
+    expect(new Set(parsedSamples.map((s: { repetition: number }) => s.repetition))).toEqual(new Set([1, 2, 3]));
+
+    // Logs: probe output published per repetition/variant/step.
+    const logPath = join(outDir, 'logs', 'rep-2', 'B', 'step-3.log');
+    expect(existsSync(logPath)).toBe(true);
+    const logText = readFileSync(logPath, 'utf8');
+    expect(logText).toContain('PROBE OK: steps 1..3 verified');
+
+    // Limitations are honest about the scripted engine and unavailable metrics.
+    const limitations = readFileSync(join(outDir, 'LIMITATIONS.md'), 'utf8');
+    expect(limitations).toContain('not an integrated coding agent');
+    expect(limitations).toContain('UNAVAILABLE, not zero');
+    expect(limitations).toContain('do not generalize');
+
+    // Ledger: one bench_run row per repetition.
+    const ledger = openLedger(dbPath);
+    try {
+      const benchRuns = ledger.db.prepare('SELECT * FROM bench_runs').all() as Record<string, unknown>[];
+      expect(benchRuns).toHaveLength(3);
+      const attempts = ledger.db.prepare('SELECT * FROM attempts').all() as Record<string, unknown>[];
+      expect(attempts).toHaveLength(18);
+    } finally {
+      closeLedger(ledger);
+    }
+  });
+
   it('fails honestly when a command variant is not permitted (unvetted repo)', async () => {
     const manifestPath = await writeManifest([
       { id: 'B', agent: 'scripted', model: 'fixture', engineeringGates: true, adaptiveRouting: false, command: 'node bench-step.mjs {step}' },
