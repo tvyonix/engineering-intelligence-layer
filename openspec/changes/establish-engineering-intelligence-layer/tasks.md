@@ -71,9 +71,12 @@
 
 ## Phase 5 — Evidence and evolution evaluation
 
-- [ ] 5.1 Формировать evidence bundle и человекочитаемую сводку для PR (без автоматического merge).
-- [ ] 5.2 Реализовать A/B/C manifest runner: одинаковые репозитории, модели, критерии, базовые commit.
-- [ ] 5.3 Реализовать последовательные 6-step изменения Beaver UI test fixture; регрессии перепроверяются на каждом шаге.
+- [x] 5.1 Формировать evidence bundle и человекочитаемую сводку для PR (без автоматического merge).
+  <!-- Evidence: evidence/pr-report.ts renderPrReport + CLI `eil report --evidence <dir> [--out]`: self-contained markdown (no absolute host paths — asserted), verdict/risk/gates table/violations with caps, baseline context collapsed, explicit 'not acceptance' + human-acceptance-none + cost-unknown statements, ends with review hand-off (EIL never merges). Tests: blocked report, needs_review round-trip through evidence schema. -->
+- [x] 5.2 Реализовать A/B/C manifest runner: одинаковые репозитории, модели, критерии, базовые commit.
+  <!-- Evidence: benchmarks/manifest.ts (strict Zod manifest; variant uniqueness; analyzeComparability — differing execution configs recorded as NOT causal, never compared), benchmarks/runner.ts runBench: per-variant fresh local clone at the SAME base commit (source repo read-only), sequential steps accumulate per variant, optional operator command per step subject to execution policy (unvetted → honest failed/execution_not_permitted), optional per-step eil check (taskFile/policyFile), bench_runs + per-step bench tasks/attempts in ledger. Engine-less variants record 'pending' attempts with explicit notes — no fabricated results. Tests: manifest unit cases, vetted execution 2 variants × 6 steps, pending-only run, unvetted failure. -->
+- [x] 5.3 Реализовать последовательные 6-step изменения Beaver UI test fixture; регрессии перепроверяются на каждом шаге.
+  <!-- Evidence: tests/helpers/beaver-fixture.ts — self-contained plain-ESM fixture (no npm install): alerts table, filters, bulk ack, API client with error handling, v2 contract migration with backward compat, regression fix; probe.mjs re-verifies invariants of ALL steps 1..K (async-aware, dynamic imports, per-step attribution 'FAIL step N'); bench-step.mjs applies step K then re-checks 1..K. Runner executes steps sequentially in the variant workspace so changes accumulate. Integration test asserts every step of 2 variants executes with probe re-checks passing and check verdict needs_review. -->
 - [ ] 5.4 Посчитать Cost per Accepted Task, Cascade Waste, REC и Regression Tax без подмены неизвестных нулями.
 - [ ] 5.5 Ввести human acceptance event; отделять pass gates от accepted.
 - [ ] 5.6 Прогнать минимум smoke suite и несколько независимых повторений; опубликовать выборки, логи и ограничения.

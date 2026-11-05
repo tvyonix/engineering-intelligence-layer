@@ -8,6 +8,8 @@ import { findSymbolReferences } from '../../packages/context-tools/references.js
 import { computeImpact } from '../../packages/context-tools/impact.js';
 import { openLedger, closeLedger, listAppliedMigrations } from '../../packages/ledger/db.js';
 import { exportJsonl } from '../../packages/ledger/records.js';
+import { buildPrReport } from '../../packages/evidence/pr-report.js';
+import { runBench } from '../../packages/benchmarks/runner.js';
 
 export interface ContextCommandOutput {
   exitCode: 0 | 1 | 2;
@@ -153,4 +155,47 @@ export async function runLedger(options: { quiet?: boolean; action: string; db: 
     }
   }
   return fail(messages, `unknown ledger action '${options.action}' (use init or export)`);
+}
+
+/** Task 5.1 CLI: `eil report --evidence <dir>` — PR-ready markdown from an evidence bundle. */
+export async function runReport(options: { evidence: string; out?: string }): Promise<ContextCommandOutput> {
+  const messages: string[] = [];
+  try {
+    const { report } = await buildPrReport(options.evidence);
+    if (options.out !== undefined) {
+      const { writeFile } = await import('node:fs/promises');
+      await writeFile(options.out, report, 'utf8');
+      messages.push(`eil: report written to ${options.out}`);
+    }
+    return { exitCode: 0, json: `${report}\n`, messages };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return fail(messages, `cannot build report: ${message}`);
+  }
+}
+
+/** Task 5.2/5.3 CLI: `eil bench --manifest <yaml> --repo <path> --out <dir> [--db <ledger>]`. */
+export async function runBenchCommand(options: {
+  manifest: string;
+  repo: string;
+  base?: string;
+  policy?: string;
+  out: string;
+  db?: string;
+  quiet?: boolean;
+}): Promise<ContextCommandOutput> {
+  const result = await runBench({
+    manifest: options.manifest,
+    repo: options.repo,
+    base: options.base,
+    policy: options.policy,
+    out: options.out,
+    ledger: options.db,
+    quiet: options.quiet,
+  });
+  return {
+    exitCode: result.exitCode,
+    json: result.summary !== null ? `${JSON.stringify(result.summary, null, 2)}\n` : null,
+    messages: result.messages,
+  };
 }

@@ -16,7 +16,7 @@ import { defaultPolicy, parsePolicy, toResolvedPolicy } from '../../packages/con
 import { collectDiff, extractCommitSnapshot, gitFailure, removeSnapshot, resolveCommit, runGit } from '../../packages/diff-inspector/git.js';
 import { buildEvidenceBundle, FsEvidenceWriter, renderSummaryMarkdown, writeEvidenceBundle } from '../../packages/evidence/bundle.js';
 import { buildGateRegistry, computeVerdict, runGates, selectGates } from '../../packages/quality-gates/run-gates.js';
-import { runImpact, runLedger, runReferences, runSymbols } from './context-commands.js';
+import { runImpact, runLedger, runReferences, runSymbols, runReport, runBenchCommand } from './context-commands.js';
 import { openLedger, closeLedger } from '../../packages/ledger/db.js';
 import { recordCheckRun } from '../../packages/ledger/records.js';
 import { renderTaskRecordMarkdown } from '../../packages/evidence/task-record.js';
@@ -307,6 +307,8 @@ Usage:
   eil symbols --repo <path> --file <relpath>
   eil references --repo <path> --file <relpath> --name <symbol>
   eil impact --repo <path> --base <ref>
+  eil report --evidence <dir> [--out <file>]
+  eil bench --manifest <yaml> --repo <path> --out <dir> [--base <ref>] [--policy <yaml>] [--db <ledger>]
   eil ledger --db <path> init | eil ledger --db <path> export --out <dir>
   eil --help | --version
 
@@ -320,6 +322,13 @@ Commands:
   impact       Potentially affected files/tests of a diff via reverse
                static-import analysis; explicitly incomplete for dynamic
                imports (completeness: static-import-analysis).
+  report       Render a PR-ready markdown summary from an evidence bundle
+               (no absolute paths; explicit acceptance/cost statements).
+  bench        Paired A/B/C benchmark runner over sequential steps: fresh
+               identical clone per variant, execution via operator command
+               (execution policy applies), optional per-step eil check,
+               bench_runs/attempts recorded to the ledger. Incomparable
+               configurations are recorded as such, never treated causal.
   ledger       Initialize the SQLite ledger or export its tables to JSONL.
 
 Options:
@@ -346,7 +355,7 @@ Exit codes:
 type ParsedArgs = { _: string[] } & { [key: string]: string | boolean | string[] };
 
 function parseArgs(argv: string[]): ParsedArgs {
-  const valueFlags = new Set(['--repo', '--task', '--base', '--policy', '--out', '--ledger', '--file', '--name', '--db']);
+  const valueFlags = new Set(['--repo', '--task', '--base', '--policy', '--out', '--ledger', '--file', '--name', '--db', '--evidence', '--manifest']);
   const parsed: ParsedArgs = { _: [] as string[] };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] as string;
@@ -385,7 +394,7 @@ export async function main(argv: string[]): Promise<0 | 1 | 2> {
     return 0;
   }
   const command = args._[0];
-  if (command === 'symbols' || command === 'references' || command === 'impact' || command === 'ledger') {
+  if (command === 'symbols' || command === 'references' || command === 'impact' || command === 'ledger' || command === 'report' || command === 'bench') {
     return contextCommand(command, args);
   }
   if (command !== 'check') {
@@ -452,6 +461,42 @@ async function contextCommand(command: string, args: ParsedArgs): Promise<0 | 1 
         return 2;
       }
       result = await runImpact({ repo: repo as string, base });
+    } else if (command === 'report') {
+      const evidence = args['evidence'];
+      if (typeof evidence !== 'string') {
+        console.error('eil: error: --evidence is required for `eil report`');
+        return 2;
+      }
+      const result = await runReport({
+        evidence,
+        out: typeof args['out'] === 'string' ? args['out'] : undefined,
+      });
+      if (result.json !== null) console.log(result.json);
+      for (const message of result.messages) console.error(message);
+      return result.exitCode;
+    } else if (command === 'bench') {
+      const manifest = args['manifest'];
+      const out = args['out'];
+      if (typeof manifest !== 'string' || typeof out !== 'string') {
+        console.error('eil: error: --manifest and --out are required for `eil bench`');
+        return 2;
+      }
+      if (typeof repo !== 'string') {
+        console.error('eil: error: --repo is required for `eil bench`');
+        return 2;
+      }
+      const result = await runBenchCommand({
+        manifest,
+        repo,
+        base: typeof args['base'] === 'string' ? args['base'] : undefined,
+        policy: typeof args['policy'] === 'string' ? args['policy'] : undefined,
+        out,
+        db: typeof args['db'] === 'string' ? args['db'] : undefined,
+        quiet: args['json'] === true,
+      });
+      if (!quietArg(args)) for (const message of result.messages) console.log(message);
+      if (result.json !== null && args['json'] === true) console.log(result.json);
+      return result.exitCode;
     } else {
       const action = args._[1];
       const db = args['db'];
@@ -473,6 +518,10 @@ async function contextCommand(command: string, args: ParsedArgs): Promise<0 | 1 
     console.error(`eil: fatal: ${message}`);
     return 2;
   }
+}
+
+function quietArg(args: ParsedArgs): boolean {
+  return args['json'] === true;
 }
 
 /* istanbul ignore next */
