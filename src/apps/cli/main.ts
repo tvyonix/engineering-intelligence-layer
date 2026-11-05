@@ -426,7 +426,8 @@ export async function main(argv: string[]): Promise<0 | 1 | 2> {
       policy: typeof args['policy'] === 'string' ? args['policy'] : undefined,
       out: typeof args['out'] === 'string' ? args['out'] : undefined,
       ledger: typeof args['ledger'] === 'string' ? args['ledger'] : undefined,
-      quiet: false,
+      // JSON mode prints the machine-readable bundle only — no human summary.
+      quiet: args['json'] === true,
     });
     if (args['json'] === true && result.bundleJson !== null) {
       console.log(result.bundleJson);

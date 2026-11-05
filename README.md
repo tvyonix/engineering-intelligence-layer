@@ -1,6 +1,6 @@
 # Engineering Intelligence Layer (EIL) — OpenSpec v0.2
 
-**Статус:** проект спецификации. Это не работающая программа и не доказанная экономия.
+**Статус:** реализация Phases 0–2, 3.1, 3.3 (check-only), 4.1–4.4, 5.1–5.6 выполнена (GLM-5.3-Flash как исполнитель); все 6 release gates v0.2 закрыты с evidence ([docs/release-gates-v0.2.md](docs/release-gates-v0.2.md)). Остались пункты, требующие независимого ревью: 1.7 (security design review, [бриф](docs/security-review-brief.md)), 5.7 (аудит результатов), затем Phase 3 (sandbox + Pi). Отчёты фаз: [docs/phase-reports.md](docs/phase-reports.md). Спецификация валидна: `npx @fission-ai/openspec validate establish-engineering-intelligence-layer --strict` → valid.
 
 ## Что мы строим
 
@@ -76,10 +76,10 @@ docs/
 ## Рекомендуемый порядок
 
 1. Ознакомиться с `proposal.md` и `design.md`.
-2. Открыть `tasks.md`: это исполнимый checklist.
-3. Начать с **Phase 0: diff gate**, затем **Phase 1: telemetry**, затем **Phase 2: Pi** и, наконец, сравнительный benchmark.
-4. Для выполнения передать исполнителю содержимое `examples/codex-or-glm-handoff.md`.
-5. Проверить спецификацию установленным OpenSpec CLI: `openspec validate establish-engineering-intelligence-layer --strict`. Команда приведена для пользователя; при генерации архива CLI не запускался.
+2. Открыть `tasks.md`: это исполнимый checklist (Phase 0–2, 3.1, 3.3*, 4.1–4.4, 5.1–5.6 выполнены с evidence-комментариями).
+3. Реализация живёт в корне репозитория (`src/`, `tests/`, `ops/`, `scripts/`): `npm install && npm run ci` — lint + typecheck + тесты + build + self-check (EIL прогоняет свои гейты на самом себе).
+4. Команды CLI: `eil check|symbols|references|impact|report|bench|accept|metrics|ledger` (см. `eil --help`).
+5. Спецификация проверена CLI: `npx @fission-ai/openspec validate establish-engineering-intelligence-layer --strict` → valid.
 
 ## Инварианты
 
