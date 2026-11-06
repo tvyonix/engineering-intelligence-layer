@@ -1,7 +1,7 @@
 {
   "name": "eil",
   "version": "0.2.0-alpha.0",
-  "description": "Engineering Intelligence Layer \u2014 deterministic diff policy, quality gates and evidence around existing coding agents. Spec: openspec/changes/establish-engineering-intelligence-layer",
+  "description": "Engineering Intelligence Layer — deterministic diff policy, quality gates and evidence around existing coding agents. Spec: openspec/changes/establish-engineering-intelligence-layer",
   "type": "module",
   "private": true,
   "engines": {
@@ -19,7 +19,7 @@
     "selfcheck": "node scripts/self-check.mjs"
   },
   "dependencies": {
-    "better-sqlite3": "^13.0.3",
+    "better-sqlite3": "^12.2.0",
     "picomatch": "^4.0.2",
     "ts-morph": "^28.0.0",
     "yaml": "^2.6.1",
@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
-    "@types/better-sqlite3": "^9.6.0",
+    "@types/better-sqlite3": "^7.6.12",
     "@types/node": "^22.10.2",
     "@types/picomatch": "^3.0.0",
     "eslint": "^9.17.0",
