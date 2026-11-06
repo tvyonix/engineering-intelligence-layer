@@ -37,7 +37,12 @@ export interface WorkspaceLock {
   createdAt: string;
 }
 
-const LOCK_FILE = '.eil-lock.json';
+/**
+ * Locks live OUTSIDE the workspace (in the workspaces root), so they never
+ * appear in the repository diff of a check run. One `.lock.json` per
+ * workspace directory, named after it.
+ */
+const LOCK_SUFFIX = '.lock.json';
 /** Locks from other hosts older than this are treated as stale (cross-host liveness is unknowable). */
 const FOREIGN_LOCK_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
@@ -50,8 +55,12 @@ function isPidAlive(pid: number): boolean {
   }
 }
 
-async function readLock(dir: string): Promise<WorkspaceLock | null> {
-  const lockPath = join(dir, LOCK_FILE);
+function lockPathFor(workspacesRoot: string, dir: string): string {
+  return join(workspacesRoot, `${dir.split('/').pop() ?? dir}${LOCK_SUFFIX}`);
+}
+
+async function readLock(workspacesRoot: string, dir: string): Promise<WorkspaceLock | null> {
+  const lockPath = lockPathFor(workspacesRoot, dir);
   if (!existsSync(lockPath)) return null;
   try {
     return JSON.parse(await readFile(lockPath, 'utf8')) as WorkspaceLock;
@@ -104,10 +113,12 @@ export async function createTaskWorkspace(options: CreateWorkspaceOptions): Prom
     throw new Error(`workspace clone failed: ${message}`);
   }
 
-  const existing = await readLock(dir);
+  const lockPath = lockPathFor(root, dir);
+  const existing = await readLock(root, dir);
   if (existing !== null) {
-    // A lock inside a brand-new mkdtemp dir can only be a race; refuse cleanly.
+    // A lock for a brand-new mkdtemp dir can only be a race; refuse cleanly.
     await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+    await rm(lockPath, { force: true }).catch(() => undefined);
     throw new WorkspaceBusyError(`workspace race detected for task '${options.taskId}'`);
   }
   const lock: WorkspaceLock = {
@@ -116,18 +127,18 @@ export async function createTaskWorkspace(options: CreateWorkspaceOptions): Prom
     host: 'local',
     createdAt: new Date().toISOString(),
   };
-  await writeFile(join(dir, LOCK_FILE), `${JSON.stringify(lock, null, 2)}\n`, 'utf8');
+  await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`, 'utf8');
   return { id: options.taskId, dir, baseCommit: options.baseCommit };
 }
 
 /** Releases the writer lock; the workspace directory stays on disk. */
-export async function releaseLock(dir: string, taskId: string): Promise<void> {
-  const lock = await readLock(dir);
+export async function releaseLock(workspacesRoot: string, dir: string, taskId: string): Promise<void> {
+  const lock = await readLock(workspacesRoot, dir);
   if (lock === null) return;
   if (lock.taskId !== taskId) {
     throw new WorkspaceBusyError(`lock belongs to task '${lock.taskId}', not '${taskId}'`);
   }
-  await rm(join(dir, LOCK_FILE), { force: true });
+  await rm(lockPathFor(workspacesRoot, dir), { force: true });
 }
 
 /**
@@ -135,13 +146,24 @@ export async function releaseLock(dir: string, taskId: string): Promise<void> {
  * locked by a live writer on this host is protected unless force=true;
  * stale locks are removed together with the workspace.
  */
-export async function removeWorkspace(dir: string, options: { force?: boolean } = {}): Promise<void> {
-  if (!existsSync(dir)) return; // idempotent
-  const lock = await readLock(dir);
+export async function removeWorkspace(
+  dir: string,
+  options: { force?: boolean; workspacesRoot?: string } = {},
+): Promise<void> {
+  if (!existsSync(dir)) {
+    if (options.workspacesRoot !== undefined) {
+      await rm(lockPathFor(options.workspacesRoot, dir), { force: true }).catch(() => undefined);
+    }
+    return; // idempotent
+  }
+  const lock = options.workspacesRoot !== undefined ? await readLock(options.workspacesRoot, dir) : null;
   if (!options.force && lock !== null && lock.host === 'local' && isPidAlive(lock.pid)) {
     throw new WorkspaceBusyError(`workspace '${dir}' is locked by live pid ${lock.pid} (task '${lock.taskId}')`);
   }
   await rm(dir, { recursive: true, force: true });
+  if (options.workspacesRoot !== undefined) {
+    await rm(lockPathFor(options.workspacesRoot, dir), { force: true }).catch(() => undefined);
+  }
 }
 
 /**
@@ -157,13 +179,14 @@ export async function recoverStaleWorkspaces(workspacesRoot: string): Promise<st
   for (const dirent of dirents) {
     if (!dirent.isDirectory()) continue;
     const dir = join(workspacesRoot, dirent.name);
-    const lock = await readLock(dir);
+    const lock = await readLock(workspacesRoot, dir);
     const stale =
       lock === null || // no readable lock: orphaned workspace
       (lock.host === 'local' && !isPidAlive(lock.pid)) ||
       (lock.host !== 'local' && Date.now() - Date.parse(lock.createdAt) > FOREIGN_LOCK_MAX_AGE_MS);
     if (stale) {
       await rm(dir, { recursive: true, force: true }).catch(() => undefined);
+      await rm(lockPathFor(workspacesRoot, dir), { force: true }).catch(() => undefined);
       removed.push(dir);
     }
   }

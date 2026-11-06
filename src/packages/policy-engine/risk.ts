@@ -37,6 +37,7 @@ const HIGH_RISK_HINTS: readonly string[] = [
   'authz',
   'crypto',
   'secret',
+  'credential',
   'session',
   'release',
   'migration',

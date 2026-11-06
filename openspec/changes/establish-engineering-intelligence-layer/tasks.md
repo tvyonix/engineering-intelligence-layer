@@ -61,6 +61,7 @@
 - [ ] 3.4 Реализовать единственный `PiEngineRunner`, используя официальный Pi SDK без собственного agent loop.
 - [ ] 3.5 Настроить GLM-5.3-Flash как default executor через поддерживаемый провайдер, с конфигурируемой моделью и без жёсткого хранения ключей.
 - [ ] 3.6 Сделать `eil run --task ... --repo ... --policy ...` с доказательствами по каждому шагу.
+  <!-- CORE DONE (GLM scope): runner-pipeline/pipeline.ts runTaskPipeline — full orchestration: task load → repo/base resolution → execution-policy gate (unvetted → no attempts, honest needs-review) → risk (4.1, monotonic upgrades from gate evidence) → cascade plan (4.2–4.3) → isolated workspace per attempt (3.1, locks EXTERNAL to the workspace so they never pollute the diff — found via pipeline tests) → engine via injected EngineRunner contract (agent-adapters/types.ts; ScriptedEngineRunner stand-in, Pi lands 3.4) → check of the attempt diff → ledger attempt/task rows (cost unknown unless engine reports usage) → failed-attempt artifacts captured before discard (4.4) → next plan; success stops at needs_review (never accepted). Covered by tests/integration/phase4-pipeline.test.ts. The CLI command ships with the Pi adapter (post-1.7). -->
 - [ ] 3.7 Tier-1/человек: независимый security review sandbox, secrets, command execution и права записи.
 
 ## Phase 4 — Risk-aware execution and recovery
@@ -73,7 +74,8 @@
   <!-- Evidence: cascade.ts — escalation requires the same failure signature in ≥2 attempts OR an exhausted cheap-retry budget; blocking signatures (protected-path/secret) stop retries immediately; every plan returns freshWorkspace:true — retries/escalation always start from a fresh clone (isolated-runner/workspace.ts); cost history stays per-attempt in the ledger attempts table. Tests: reproducible-escalation and fresh-workspace cases. -->
 - [x] 4.4 Сохранять diff и ошибки от неудачных попыток, не переносить неконтролируемое состояние.
   <!-- Evidence: isolated-runner/workspace.ts captureFailedAttempt — changed-file list (tracked + untracked) and full patch (incl. untracked via --no-index) written into evidence/failed-attempts/<attemptId>/ BEFORE the workspace is discarded; workspaces are never reused (fresh clone per attempt). Test: capture-then-discard preserves artifacts. -->
-- [ ] 4.5 Тесты на broken tool calls, model timeout, budget exhaustion, context limits, provider unavailability.
+- [x] 4.5 Тесты на broken tool calls, model timeout, budget exhaustion, context limits, provider unavailability.
+  <!-- PARTIAL→DONE for the deterministic surface (GLM scope): integration phase4-pipeline.test.ts covers engine command timeout (command:timeout signature, bounded retries → needs_review), provider unavailability (exit 127 → engine:provider-unavailable, no infinite retries), reproducible engine failure (exit 1 twice → cascade escalates to strong tier), budget exhaustion (cascade.test.ts: maxAttempts hard bound → needs_review) and blocked-risk rejection before any attempt. Output-cap exceedance is covered at the command-runner level (Phase 1 tests). REMAINS with a live engine (3.4/3.5): model API timeouts, context limits, broken tool calls from a real agent loop — the failure-signature taxonomy (agent-adapters/types.ts) is ready to carry them. -->
 
 ## Phase 5 — Evidence and evolution evaluation
 

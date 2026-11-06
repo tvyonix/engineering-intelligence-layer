@@ -38,9 +38,10 @@ afterEach(async () => {
 
 describe('task workspace lifecycle (task 3.1)', () => {
   it('creates an independent clone at the base commit with a writer lock', async () => {
-    const ws = await createTaskWorkspace({ repoDir, baseCommit, taskId: 'task-1', workspacesRoot: join(root, 'ws') });
+    const wsRoot = join(root, 'ws');
+    const ws = await createTaskWorkspace({ repoDir, baseCommit, taskId: 'task-1', workspacesRoot: wsRoot });
     expect(existsSync(join(ws.dir, 'start.txt'))).toBe(true);
-    expect(existsSync(join(ws.dir, '.eil-lock.json'))).toBe(true);
+    expect(existsSync(join(wsRoot, `${ws.dir.split('/').pop()}.lock.json`))).toBe(true);
     // Changes in the workspace never touch the source repository.
     await writeFile(join(ws.dir, 'new-file.txt'), 'x\n', 'utf8');
     expect(existsSync(join(repoDir, 'new-file.txt'))).toBe(false);
@@ -52,31 +53,33 @@ describe('task workspace lifecycle (task 3.1)', () => {
     // Same task again → a DIFFERENT workspace dir, not a corrupt overwrite.
     const second = await createTaskWorkspace({ repoDir, baseCommit, taskId: 'task-1', workspacesRoot: wsRoot });
     expect(second.dir).not.toBe(first.dir);
-    await removeWorkspace(first.dir, { force: true });
-    await removeWorkspace(second.dir, { force: true });
+    await removeWorkspace(first.dir, { force: true, workspacesRoot: wsRoot });
+    await removeWorkspace(second.dir, { force: true, workspacesRoot: wsRoot });
   });
 
   it('one writer: removing a workspace locked by a live writer is refused without damage', async () => {
-    const ws = await createTaskWorkspace({ repoDir, baseCommit, taskId: 'task-live', workspacesRoot: join(root, 'ws') });
-    await expect(removeWorkspace(ws.dir)).rejects.toBeInstanceOf(WorkspaceBusyError);
+    const wsRoot = join(root, 'ws');
+    const ws = await createTaskWorkspace({ repoDir, baseCommit, taskId: 'task-live', workspacesRoot: wsRoot });
+    await expect(removeWorkspace(ws.dir, { workspacesRoot: wsRoot })).rejects.toBeInstanceOf(WorkspaceBusyError);
     // The first writer is unharmed.
-    expect(existsSync(join(ws.dir, '.eil-lock.json'))).toBe(true);
-    await releaseLock(ws.dir, 'task-live');
-    await removeWorkspace(ws.dir);
+    expect(existsSync(join(wsRoot, `${ws.dir.split('/').pop()}.lock.json`))).toBe(true);
+    await releaseLock(wsRoot, ws.dir, 'task-live');
+    await removeWorkspace(ws.dir, { workspacesRoot: wsRoot });
     expect(existsSync(ws.dir)).toBe(false);
   });
 
   it('releaseLock refuses a foreign task id', async () => {
-    const ws = await createTaskWorkspace({ repoDir, baseCommit, taskId: 'task-a', workspacesRoot: join(root, 'ws') });
-    await expect(releaseLock(ws.dir, 'task-b')).rejects.toBeInstanceOf(WorkspaceBusyError);
-    await releaseLock(ws.dir, 'task-a');
+    const wsRoot = join(root, 'ws');
+    const ws = await createTaskWorkspace({ repoDir, baseCommit, taskId: 'task-a', workspacesRoot: wsRoot });
+    await expect(releaseLock(wsRoot, ws.dir, 'task-b')).rejects.toBeInstanceOf(WorkspaceBusyError);
+    await releaseLock(wsRoot, ws.dir, 'task-a');
   });
 
   it('recovers stale workspaces (dead pid) and leaves live ones alone', async () => {
     const wsRoot = join(root, 'ws');
     const stale = await createTaskWorkspace({ repoDir, baseCommit, taskId: 'stale', workspacesRoot: wsRoot });
-    // Corrupt the lock into a dead-pid state.
-    const lockPath = join(stale.dir, '.eil-lock.json');
+    // Corrupt the lock into a dead-pid state (locks live in the root now).
+    const lockPath = join(wsRoot, `${stale.dir.split('/').pop()}.lock.json`);
     await writeFile(lockPath, `${JSON.stringify({ taskId: 'stale', pid: 999999999, host: 'local', createdAt: new Date().toISOString() }, null, 2)}\n`, 'utf8');
     const live = await createTaskWorkspace({ repoDir, baseCommit, taskId: 'live', workspacesRoot: wsRoot });
 
@@ -84,16 +87,17 @@ describe('task workspace lifecycle (task 3.1)', () => {
     expect(removed).toHaveLength(1);
     expect(existsSync(stale.dir)).toBe(false);
     expect(existsSync(live.dir)).toBe(true);
-    await removeWorkspace(live.dir, { force: true });
+    await removeWorkspace(live.dir, { force: true, workspacesRoot: wsRoot });
   });
 
   it('stale lock is recovered by createTaskWorkspace for the same-named root dir scenario', async () => {
     // A stale lock must not wedge the task forever: recovery works through
     // recoverStaleWorkspaces (tested above); createTaskWorkspace itself
     // refuses only live races.
-    const ws = await createTaskWorkspace({ repoDir, baseCommit, taskId: 'fresh', workspacesRoot: join(root, 'ws') });
-    await releaseLock(ws.dir, 'fresh');
-    await removeWorkspace(ws.dir);
+    const wsRoot = join(root, 'ws');
+    const ws = await createTaskWorkspace({ repoDir, baseCommit, taskId: 'fresh', workspacesRoot: wsRoot });
+    await releaseLock(wsRoot, ws.dir, 'fresh');
+    await removeWorkspace(ws.dir, { workspacesRoot: wsRoot });
   });
 });
 
