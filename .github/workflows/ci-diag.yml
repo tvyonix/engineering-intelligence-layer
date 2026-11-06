@@ -1,0 +1,12 @@
+name: ci-diag
+on: [push, workflow_dispatch]
+jobs:
+  diag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - name: Single-worker diagnostics
+        run: npx vitest run --maxWorkers=1 --minWorkers=1 --reporter=basic 2>&1 | tail -40
