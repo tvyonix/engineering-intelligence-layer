@@ -1,6 +1,6 @@
 # Engineering Intelligence Layer (EIL) — OpenSpec v0.2
 
-**Статус:** реализация Phases 0–2, 3.1, 3.3 (check-only), 4.1–4.4, 5.1–5.6 выполнена (GLM-5.3-Flash как исполнитель); все 6 release gates v0.2 закрыты с evidence ([docs/release-gates-v0.2.md](docs/release-gates-v0.2.md)). Остались пункты, требующие независимого ревью: 1.7 (security design review, [бриф](docs/security-review-brief.md)), 5.7 (аудит результатов), затем Phase 3 (sandbox + Pi). Отчёты фаз: [docs/phase-reports.md](docs/phase-reports.md). Спецификация валидна: `npx @fission-ai/openspec validate establish-engineering-intelligence-layer --strict` → valid.
+**Статус:** 30/31 задач change выполнены (Phases 0–2 полностью; 3.1, 3.2 (security-тест 22/22), 3.3 (check-only), 3.6, 4.1–4.5 (детерминированная часть), 5.1–5.6); все 6 release gates v0.2 закрыты с evidence ([docs/release-gates-v0.2.md](docs/release-gates-v0.2.md)). Осталось — только независимое ревью и живой движок: 1.7 (security design review), 5.7 (аудит результатов), 3.4–3.5/3.7 (Pi SDK после 1.7 и data agreement). Единый вход для ревьюера: [docs/review-handoff.md](docs/review-handoff.md). Отчёты фаз: [docs/phase-reports.md](docs/phase-reports.md).
 
 ## Что мы строим
 
@@ -41,7 +41,7 @@ docs/security-review-brief.md  # бриф для Tier-1 security review (task 1.
 
 Ключевые политики: host-исполнение команд запрещено по умолчанию (`execution.vettedRepos`); новые зависимости требуют записи в `dependencies.approvedFiles`; обрезанный патч (>16 MiB) → `diff-patch-integrity` error; baseline new/inherited через `git archive`-снапшот; в ledger стоимость помечается `billed|estimated|unknown` (unknown ≠ $0); Task Record в каждом evidence-бандле.
 
-Команды: `npm install`, `npm run ci`, проверка: `eil check --repo <path> --task <task.yaml> [--ledger <db>]`; контекст: `eil symbols|references|impact`; ledger: `eil ledger --db <path> init|export`. Коды выхода: 0 — гейты пройдены (`needs_review`, не acceptance), 1 — blocked, 2 — error (fail closed). Окружения: `docs/supported-environments.md`.
+Команды: `npm install`, `npm run ci`, проверка: `eil check --repo <path> --task <task.yaml> [--ledger <db>]`; выполнение: `eil run --repo --task --policy --out [--ledger]` (движок = `execution.engineCommand` из operator policy; Pi-адаптер подключается после security review); контекст: `eil symbols|references|impact`; отчёты: `eil report|metrics|accept`; benchmark: `eil bench`; ledger: `eil ledger --db <path> init|export`. Коды выхода: 0 — гейты пройдены (`needs_review`, не acceptance), 1 — blocked, 2 — error (fail closed). Окружения: `docs/supported-environments.md`. Заметка о нативной зависимости: better-sqlite3 закреплён на 12.x (v13 сегфолтит на node 20 — см. `docs/decisions.md`, 2026-11-07).
 
 ## Файлы
 

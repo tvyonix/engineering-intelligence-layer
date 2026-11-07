@@ -33,6 +33,9 @@ quality:
 #     - "/absolute/path/to/vetted-fixture-repo"
 #   timeoutMs: 120000
 #   maxOutputBytes: 1048576
+#   engineCommand: 'sh -c "apply-change.sh {attempt}"'  # eil run engine (scripted
+#                          # stand-in; {attempt} substituted; Pi adapter after 1.7)
+#   maxCheapRetries: 1   # cascade: cheap-tier retries before escalation
 # dependencies:
 #   approvedFiles:       # manifest/lockfile changes approved by the operator
 #     - "package.json"
