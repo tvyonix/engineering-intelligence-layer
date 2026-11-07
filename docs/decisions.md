@@ -59,3 +59,30 @@ Required negative scenarios, each with a verifiable exit code and an evidence
 record: missing command, command timeout, invalid configuration, symlink
 outside the workspace, changed lockfile, incomplete diff (truncated patch),
 parser failure, killed child process.
+
+## 2026-11-07 — Pin better-sqlite3 to 12.x (v13 native segfault on node 20)
+
+**Проблема.** Все прогоны GitHub Actions CI с первого коммита были красными:
+vitest-воркеры умирали (`ERR_IPC_CHANNEL_CLOSED`). Локально на macOS+node 22
+всё было зелёным — комбинация, не попадающая в битую пару.
+
+**Диагностика.** Не воспроизводилось в контейнерах node 22 (arm64/amd64,
+CI=true, лимиты CPU/памяти раннеров). Воспроизведено в контейнере node:20 —
+и сужено до одной строчки вне vitest: `require('better-sqlite3')` →
+SIGSEGV (exit 139). То есть prebuilt-бинарник better-sqlite3@13.0.3 бит для
+node 20 (ABI 115); любой тест, грузящий ledger, ронял воркер. Временный
+обход (`fileParallelism: false` на CI) снят после устранения причины.
+
+**Решение.** better-sqlite3 закреплён на 12.2.0 (проверено: node 20/22,
+linux arm64/x64, полный прогон 195/195 параллельно). Миграция на v13 —
+только после появления рабочих prebuilds для node 20 в upstream и
+проверки в CI-матрице.
+
+**Урок для процесса.** Зелёный локальный CI не означает зелёный CI:
+матрица платформ имеет смысл, только если её результаты кто-то читает.
+Проверка статуса GitHub Actions добавлена в определение done для фаз.
+
+**Влияние на ревью 1.7.** Зона 6 брифа (ledger/нативные зависимости)
+дополнена фактом: нативная зависимость уже однажды роняла весь тестовый
+конкур тихо; при ревью — проверить целесообразность замера на
+node-sqlite3-wasm как альтернативы без нативного кода.

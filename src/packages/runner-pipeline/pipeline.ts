@@ -17,7 +17,7 @@ import {
   removeWorkspace,
 } from '../isolated-runner/workspace.js';
 import { openLedger, closeLedger, type Ledger } from '../ledger/db.js';
-import { recordAttempt } from '../ledger/records.js';
+import { recordAttempt, recordCheckRun } from '../ledger/records.js';
 import { evidenceBundleSchema } from '../evidence/bundle.js';
 import type { AttemptResult, EngineRunner } from '../agent-adapters/types.js';
 
@@ -265,6 +265,28 @@ export async function runTaskPipeline(options: PipelineOptions): Promise<Pipelin
           const raw = await readFile(join(check.evidenceDir, 'evidence.json'), 'utf8');
           const bundle = evidenceBundleSchema.parse(JSON.parse(raw));
           checkVerdict = bundle.verdict;
+          // The verification run is a ledger attempt of its own ('eil-check'):
+          // metrics sum attempt + verification costs (design.md §11).
+          if (ledger !== null) {
+            recordCheckRun(ledger, {
+              taskId: contract.id,
+              baseCommit,
+              contractHash,
+              status: bundle.verdict,
+              risk: bundle.risk,
+              startedAt: result.startedAt,
+              completedAt: new Date().toISOString(),
+              policyVersion: options.policy.source,
+              evidenceDir: check.evidenceDir,
+              gates: bundle.gateResults.map((g) => ({
+                id: g.id,
+                status: g.status,
+                mandatory: g.mandatory,
+                durationMs: g.durationMs,
+                evidencePath: g.evidencePath,
+              })),
+            });
+          }
           // Monotonic risk upgrade from gate evidence (4.1 property).
           const assessed = classifyTaskRisk({
             changedPaths: [],

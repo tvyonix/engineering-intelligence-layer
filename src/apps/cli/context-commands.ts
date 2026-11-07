@@ -296,3 +296,75 @@ export async function runMetrics(options: {
     closeLedger(ledger);
   }
 }
+
+/**
+ * Task 3.6 CLI (scripted-engine mode): `eil run --repo <path> --task <yaml>
+ * --policy <yaml> --out <dir> [--ledger <db>]`. Runs the attempt pipeline
+ * with the operator-supplied engineCommand from policy.execution: each
+ * attempt executes the command inside a fresh isolated workspace, then the
+ * diff is checked by the full gate set, the ledger records the attempt, and
+ * the cascade planner decides the next step. The Pi adapter (task 3.4)
+ * replaces the scripted runner after the security review — via the same
+ * EngineRunner contract, without touching this command.
+ */
+export async function runRun(options: {
+  repo: string;
+  task: string;
+  policy: string;
+  out: string;
+  ledger?: string;
+  strongTierConfigured?: boolean;
+  quiet?: boolean;
+}): Promise<ContextCommandOutput> {
+  const messages: string[] = [];
+  const { parse: parseYaml } = await import('yaml');
+  const { readFile: rf } = await import('node:fs/promises');
+  const { parsePolicy, toResolvedPolicy } = await import('../../packages/contracts/policy.js');
+  const { ScriptedEngineRunner } = await import('../../packages/agent-adapters/scripted.js');
+  const { runTaskPipeline } = await import('../../packages/runner-pipeline/pipeline.js');
+
+  let policyData: unknown;
+  try {
+    policyData = parseYaml(await rf(options.policy, 'utf8'));
+  } catch (error) {
+    return fail(messages, `cannot read policy: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const parsed = parsePolicy(policyData);
+  if (!parsed.ok) return fail(messages, `policy is invalid: ${parsed.issues.join('; ')}`);
+  const resolved = toResolvedPolicy(parsed.policy, 'file');
+
+  if (resolved.execution?.engineCommand === undefined) {
+    return fail(
+      messages,
+      'policy has no execution.engineCommand: `eil run` needs an operator-supplied engine command (scripted stand-in until the Pi adapter, task 3.4)',
+    );
+  }
+
+  const engine = new ScriptedEngineRunner({
+    engineId: 'scripted',
+    model: 'operator-command',
+    command: resolved.execution.engineCommand,
+  });
+  const summary = await runTaskPipeline({
+    repo: options.repo,
+    taskFile: options.task,
+    policy: resolved,
+    engine,
+    checker: async (request) => {
+      const check = await runCheck({ ...request, policy: options.policy, quiet: true });
+      return { exitCode: check.exitCode, evidenceDir: check.evidenceDir };
+    },
+    out: options.out,
+    ledger: options.ledger,
+    maxCheapRetries: resolved.execution.maxCheapRetries ?? 1,
+    strongTierConfigured: options.strongTierConfigured ?? false,
+    quiet: options.quiet,
+  });
+
+  for (const note of summary.notes) messages.push(`eil: run: ${note}`);
+  return {
+    exitCode: summary.exitCode,
+    json: `${JSON.stringify(summary, null, 2)}\n`,
+    messages,
+  };
+}

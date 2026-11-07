@@ -307,6 +307,7 @@ const USAGE = `eil ${EIL_VERSION} — Engineering Intelligence Layer (check-only
 
 Usage:
   eil check --repo <path> --task <task.yaml> [--base <ref>] [--policy <policy.yaml>] [--out <dir>] [--ledger <db>] [--json]
+  eil run --repo <path> --task <task.yaml> --policy <policy.yaml> --out <dir> [--ledger <db>]
   eil symbols --repo <path> --file <relpath>
   eil references --repo <path> --file <relpath> --name <symbol>
   eil impact --repo <path> --base <ref>
@@ -321,6 +322,13 @@ Commands:
   check        Verify an existing diff against a task contract and policy.
                Runs no agent, no LLM, no network calls. Read-only for the
                repository; writes an evidence bundle under --out.
+  run          Attempt pipeline with a scripted engine: the operator-supplied
+               execution.engineCommand runs per attempt inside a fresh
+               isolated workspace; the diff is checked by the full gate set;
+               the cascade planner routes retries/escalation; everything is
+               recorded to the ledger. Human acceptance is never implied.
+               (The Pi engine adapter replaces the scripted runner after the
+               security review, task 3.4.)
   symbols      List top-level declarations of a file: kind, export status,
                overload signatures, re-exports (read-only, ts-morph).
   references   Exact coordinates of a symbol's declaration and references.
@@ -406,7 +414,7 @@ export async function main(argv: string[]): Promise<0 | 1 | 2> {
     return 0;
   }
   const command = args._[0];
-  if (command === 'symbols' || command === 'references' || command === 'impact' || command === 'ledger' || command === 'report' || command === 'bench' || command === 'accept' || command === 'metrics') {
+  if (command === 'symbols' || command === 'references' || command === 'impact' || command === 'ledger' || command === 'report' || command === 'bench' || command === 'accept' || command === 'metrics' || command === 'run') {
     return contextCommand(command, args);
   }
   if (command !== 'check') {
@@ -449,7 +457,7 @@ export async function main(argv: string[]): Promise<0 | 1 | 2> {
 }
 
 async function contextCommand(command: string, args: ParsedArgs): Promise<0 | 1 | 2> {
-  const { runImpact, runLedger, runReferences, runSymbols, runReport, runBenchCommand, runAccept, runMetrics } = await import('./context-commands.js');
+  const { runImpact, runLedger, runReferences, runSymbols, runReport, runBenchCommand, runAccept, runMetrics, runRun } = await import('./context-commands.js');
   const repo = args['repo'];
   if (command !== 'ledger' && typeof repo !== 'string') {
     console.error(`eil: error: --repo is required for '${command}'`);
@@ -533,6 +541,28 @@ async function contextCommand(command: string, args: ParsedArgs): Promise<0 | 1 
         changesRequested: typeof args['changes-requested'] === 'string' ? args['changes-requested'] : undefined,
       });
       if (result.json !== null) console.log(result.json);
+      if (!quietArg(args)) for (const message of result.messages) console.error(message);
+      return result.exitCode;
+    } else if (command === 'run') {
+      const task = args['task'];
+      const policy = args['policy'];
+      const out = args['out'];
+      if (typeof task !== 'string' || typeof policy !== 'string' || typeof out !== 'string') {
+        console.error('eil: error: --task, --policy and --out are required for `eil run`');
+        return 2;
+      }
+      if (typeof repo !== 'string') {
+        console.error('eil: error: --repo is required for `eil run`');
+        return 2;
+      }
+      const result = await runRun({
+        repo,
+        task,
+        policy,
+        out,
+        ledger: typeof args['ledger'] === 'string' ? args['ledger'] : undefined,
+      });
+      if (result.json !== null && args['json'] === true) console.log(result.json);
       if (!quietArg(args)) for (const message of result.messages) console.error(message);
       return result.exitCode;
     } else if (command === 'metrics') {

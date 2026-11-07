@@ -50,6 +50,15 @@ export const policySchema = z
         vettedRepos: z.array(z.string().min(1)),
         timeoutMs: z.number().int().positive().max(3_600_000).optional(),
         maxOutputBytes: z.number().int().positive().max(64 * 1024 * 1024).optional(),
+        /**
+         * Operator-supplied engine command for `eil run` (task 3.6,
+         * scripted stand-in until the Pi adapter): executed inside the
+         * isolated workspace per attempt; `{attempt}` is substituted.
+         * Source is privileged policy only — repository content can never
+         * set it. Subject to the same vettedRepos gate as gate commands.
+         */
+        engineCommand: z.string().min(1).optional(),
+        maxCheapRetries: z.number().int().min(0).max(10).optional(),
       })
       .strict()
       .optional(),
@@ -96,7 +105,13 @@ export interface ResolvedPolicy {
     allowedImports?: string[];
     forbidRawColors?: boolean;
   };
-  execution?: { vettedRepos: string[]; timeoutMs?: number; maxOutputBytes?: number };
+  execution?: {
+    vettedRepos: string[];
+    timeoutMs?: number;
+    maxOutputBytes?: number;
+    engineCommand?: string;
+    maxCheapRetries?: number;
+  };
   dependencies?: { approvedFiles: string[] };
   boundaries?: {
     forbiddenImports?: { from: string; disallow: string[] }[];
@@ -160,6 +175,8 @@ export function toResolvedPolicy(policy: Policy, source: 'file' | 'default'): Re
       vettedRepos: [...policy.execution.vettedRepos],
       timeoutMs: policy.execution.timeoutMs,
       maxOutputBytes: policy.execution.maxOutputBytes,
+      engineCommand: policy.execution.engineCommand,
+      maxCheapRetries: policy.execution.maxCheapRetries,
     };
   }
   if (policy.dependencies !== undefined) {

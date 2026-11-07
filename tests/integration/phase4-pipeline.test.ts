@@ -128,10 +128,11 @@ describe('attempt pipeline (skeleton of 3.6, policy level)', () => {
 
     const ledger = await openLedger(join(root, 'ledger.db'));
     try {
-      const attempts = ledger.db.prepare('SELECT * FROM attempts').all() as Record<string, unknown>[];
-      expect(attempts).toHaveLength(1);
-      expect(attempts[0]?.engine).toBe('scripted');
-      expect(attempts[0]?.cost_kind).toBe('unknown');
+      const attempts = ledger.db.prepare('SELECT * FROM attempts ORDER BY id').all() as Record<string, unknown>[];
+      // Engine attempt + the verification run (eil-check) — both recorded.
+      expect(attempts).toHaveLength(2);
+      expect(attempts.map((a) => a.engine).sort()).toEqual(['eil-check', 'scripted']);
+      expect(attempts.every((a) => a.cost_kind === 'unknown')).toBe(true);
       const task = ledger.db.prepare('SELECT * FROM tasks WHERE id = ?').get('pipeline-task') as Record<string, unknown>;
       expect(task?.status).toBe('needs_review');
       expect(task?.risk).toBe('low');
