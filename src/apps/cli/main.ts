@@ -459,7 +459,9 @@ export async function main(argv: string[]): Promise<0 | 1 | 2> {
 async function contextCommand(command: string, args: ParsedArgs): Promise<0 | 1 | 2> {
   const { runImpact, runLedger, runReferences, runSymbols, runReport, runBenchCommand, runAccept, runMetrics, runRun } = await import('./context-commands.js');
   const repo = args['repo'];
-  if (command !== 'ledger' && typeof repo !== 'string') {
+  // ledger and report operate on files (a ledger DB / an evidence bundle),
+  // not on a repository — no --repo requirement for them.
+  if (command !== 'ledger' && command !== 'report' && typeof repo !== 'string') {
     console.error(`eil: error: --repo is required for '${command}'`);
     return 2;
   }

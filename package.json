@@ -17,7 +17,8 @@
     "lint": "eslint .",
     "ci": "npm run lint && npm run typecheck && npm run test && npm run build && npm run selfcheck",
     "selfcheck": "node scripts/self-check.mjs",
-    "bench:smoke": "node scripts/publish-bench-smoke.mjs"
+    "bench:smoke": "node scripts/publish-bench-smoke.mjs",
+    "field:test": "node scripts/field-test.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",

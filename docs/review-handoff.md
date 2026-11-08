@@ -54,6 +54,13 @@ unknown ≠ 0; merge только человеком).
 `execution.vettedRepos` за пределы фикстур и на подключение Pi (3.4) до
 устранения. 5.7: отдельное заключение по каждой метрике.
 
+## Полевая валидация
+
+Реальные OSS-репозитории (zod, hono — pinned SHA), не фикстуры:
+`npm run field:test` → [ops/field-test-results.md](../ops/field-test-results.md)
+(check/references/impact/symbols/report на настоящих диффах; 7/7 на момент
+публикации; скрипт нашёл и вскрыл UX-баг `eil report`, исправленный тут же).
+
 ## Воспроизведение
 
 ```bash
