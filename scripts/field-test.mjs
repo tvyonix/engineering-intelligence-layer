@@ -69,7 +69,22 @@ policy:
   noNewDependencies: false
 `,
   );
-  const policy = join(repoRoot, 'ops', 'self-policy.yaml');
+  // The field test uses its OWN policy (not EIL's self-policy): boundary
+  // rules tuned for this repository must not silently apply to foreign
+  // code. Exercised here: path scope, secret screening, new-cycle detector.
+  const policy = join(tmp, `field-policy-${name}.yaml`);
+  writeFileSync(
+    policy,
+    `version: 1
+quality:
+  required:
+    - "path-scope"
+    - "import-boundaries"
+    - "secrets-scan"
+boundaries:
+  forbidNewCycles: true
+`,
+  );
   const out = join(tmp, `ev-${name}`);
   let exit = 0;
   let output = '';

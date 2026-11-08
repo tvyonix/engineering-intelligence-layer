@@ -1,6 +1,6 @@
 # Field test results — real OSS repositories
 
-Run: 2026-11-08T10:24:48.782Z · executor: `node scripts/field-test.mjs` (pinned SHAs inside the script)
+Run: 2026-11-08T10:33:58.195Z · executor: `node scripts/field-test.mjs` (pinned SHAs inside the script)
 
 EIL analysis commands executed against real-world TypeScript code (not fixtures): monorepo package layouts, namespace imports, `.js` specifiers, release-only commits.
 

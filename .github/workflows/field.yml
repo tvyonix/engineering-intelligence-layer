@@ -1,0 +1,21 @@
+name: field
+on:
+  push:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1' # weekly Monday 06:00 — catches upstream SHAs going away
+
+jobs:
+  field:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - name: Field validation on real OSS repositories (pinned SHAs)
+        run: node scripts/field-test.mjs
+      # The run rewrites ops/field-test-results.md with a fresh timestamp;
+      # on CI that must not dirty the checkout for later steps — restore it.
+      - run: git checkout -- ops/field-test-results.md || true
