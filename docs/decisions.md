@@ -118,3 +118,17 @@ node-sqlite3-wasm как альтернативы без нативного ко
 **Защита от регрессий.** В CI добавлен шаг
 `npm audit --omit=dev --audit-level=high`: падает, если в runtime-цепочке
 появится high/critical. Dev-цепочка сознательно вне жёсткой полки.
+
+## 2026-11-08 — npm 11 compatibility: explicit allowScripts
+
+`npx npm@11 ci` собирает проект, включая нативный better-sqlite3
+(install-скрипты пока предупреждение, не блок). Чтобы будущие ужесточения
+npm не сломали сборку молча, install-скрипты двух легитимных нативных
+пакетов (better-sqlite3, fsevents) одобрены явно полем `allowScripts` в
+package.json. Побочный эффект перехода через npm@11: spec'и в package.json
+нормализованы под фактические версии локфайла (typescript ^5.9.3) — CI на
+этих версиях зелёный до и после.
+
+Покрытие тестами зафиксировано для ревьюера: `npm run coverage`
+(85% statements / 70% branches / 92% functions; слабое место — usage-ветки
+CLI, не детерминированные модули решений).
