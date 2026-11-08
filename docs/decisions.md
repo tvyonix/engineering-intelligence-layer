@@ -101,10 +101,19 @@ node-sqlite3-wasm как альтернативы без нативного ко
   Апгрейд до zod 4.6.7 выполнен: поверхность API консервативна, единственная
   миграция — `z.record(v)` → `z.record(k, v)` (2 вызова). Strict-семантика
   контрактов подтверждена тестами (unknown-field rejection).
-- Остаток: 2 moderate только в dev-инструментах (`@vitest/mocker`,
-  `minimatch` ReDoS-класс). Фикс требует breaking vitest 5 в стабильной
-  ветке — принято НЕ делать до отдельного решения; экспозиция ограничена
-  парсингом собственных globs в тестах.
+- Остаток (обновление 2026-11-08, позднее тем же днём): `@vitest/mocker`
+  закрыт апгрейдом vitest 3.2.7 → 4.1.12 (адвайзори покрывает ≤4.1.11;
+  breaking-переход на vitest 5 не потребовался). Попутно tinypool исчез из
+  дерева — vitest 4 не использует его, отдельный override снят.
+  Инсталляция потребовала `npx npm@11 install`: npm 10.9.3 (арборист)
+  падает `Cannot read properties of null (reading 'edgesOut')` в
+  loadPeerSet на peer-цепочке `@vitest/browser-playwright` vitest 4 —
+  баг npm, воспроизводимый на голом `npm i -D vitest@4.1.12 typescript`;
+  свежая npm собирает дерево нормально, lockfile читается любой.
+- Финальный остаток: 1 moderate `minimatch` (ReDoS-класс) в dev-транзитиве
+  @ts-morph/common/typescript-estree. Override на мажор minimatch рискует
+  сломать транзитивы сильнее, чем ReDoS при парсинге собственных globs —
+  принято оставить; runtime-полка CI (--omit=dev) его не видит.
 
 **Защита от регрессий.** В CI добавлен шаг
 `npm audit --omit=dev --audit-level=high`: падает, если в runtime-цепочке
