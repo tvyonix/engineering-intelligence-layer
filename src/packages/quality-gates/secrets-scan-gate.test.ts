@@ -49,18 +49,18 @@ describe('scanForSecrets', () => {
 
   it('detects structured secret signatures', () => {
     const findings = scanForSecrets([
-      line('aws_key = "AKIAIOSFODNN7EXAMPLE"'),
-      line('-----BEGIN RSA PRIVATE KEY-----'),
-      line('token: ghp_ABCDEFGHIJKLMNOPQRSTUVWX'),
-      line('slack: xoxb-123456789012-abcdef'),
-      line('key = "AIzaSyA-1234567890abcdefghijklmnopqrstu"'),
+      line('aws_key = "AKIAIOSFODNN7EXAMPLE"'), // eil-allow-secret-fixture
+      line('-----BEGIN RSA PRIVATE KEY-----'), // eil-allow-secret-fixture
+      line('token: ghp_ABCDEFGHIJKLMNOPQRSTUVWX'), // eil-allow-secret-fixture
+      line('slack: xoxb-123456789012-abcdef'), // eil-allow-secret-fixture
+      line('key = "AIzaSyA-1234567890abcdefghijklmnopqrstu"'), // eil-allow-secret-fixture
     ]);
     const rules = findings.map((f) => f.rule).sort();
     expect(rules).toEqual(['aws-access-key', 'github-token', 'google-api-key', 'pem-private-key', 'slack-token']);
   });
 
   it('detects generic secret assignments but excludes placeholders', () => {
-    const findings = scanForSecrets([line('API_KEY = "s3cr3t-value-42"')]);
+    const findings = scanForSecrets([line('API_KEY = "s3cr3t-value-42"')]); // eil-allow-secret-fixture
     expect(findings.map((f) => f.rule)).toEqual(['secret-assignment']);
 
     const placeholders = scanForSecrets([
@@ -71,13 +71,24 @@ describe('scanForSecrets', () => {
     expect(placeholders).toHaveLength(0);
   });
 
+  it('the fixture marker suppresses a line, but never weakens others', () => {
+    const findings = scanForSecrets([
+      line('token: ghp_ABCDEFGHIJKLMNOPQRSTUVWX // eil-allow-secret-fixture'),
+      line('API_KEY = "real-looking-value-42"'), // eil-allow-secret-fixture
+    ]);
+    // The marked line is suppressed as an explicit test fixture...
+    expect(findings.some((f) => f.path === 'src/a.ts' && f.rule === 'github-token')).toBe(false);
+    // ...while the unmarked neighbour is still caught.
+    expect(findings.some((f) => f.rule === 'secret-assignment')).toBe(true);
+  });
+
   it('ignores clean code lines', () => {
     const findings = scanForSecrets([line('const answer = 42;'), line('export function greet(name: string): string { return name; }')]);
     expect(findings).toHaveLength(0);
   });
 
   it('masks excerpts — the secret value never appears', () => {
-    const findings = scanForSecrets([line('API_KEY = "super-secret-value-123"')]);
+    const findings = scanForSecrets([line('API_KEY = "super-secret-value-123"')]); // eil-allow-secret-fixture
     expect(findings[0]?.maskedExcerpt).toContain('*');
     expect(findings[0]?.maskedExcerpt).not.toContain('super-secret-value-123');
     expect(maskExcerpt('short')).toBe('shor******…');
@@ -146,7 +157,7 @@ policy:
   }
 
   it('a real-looking secret fails the gate, is masked in evidence, and blocks the risk', async () => {
-    await writeFile(join(repoDir, 'config.ts'), 'export const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";\n', 'utf8');
+    await writeFile(join(repoDir, 'config.ts'), 'export const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";\n', 'utf8'); // eil-allow-secret-fixture
     const { exitCode, evidence, evidenceDir } = await runWithSecretsPolicy();
     expect(exitCode).toBe(1);
     expect(evidence.verdict).toBe('blocked');
@@ -159,7 +170,7 @@ policy:
     // The full key value must not appear anywhere in the evidence bundle.
     const { readFileSync } = await import('node:fs');
     const bundleText = readFileSync(join(evidenceDir, 'evidence.json'), 'utf8');
-    expect(bundleText).not.toContain('AKIAIOSFODNN7EXAMPLE');
+    expect(bundleText).not.toContain('AKIAIOSFODNN7EXAMPLE'); // eil-allow-secret-fixture
   });
 
   it('placeholder values pass; untracked files are scanned too', async () => {

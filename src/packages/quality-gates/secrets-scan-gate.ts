@@ -93,6 +93,15 @@ export interface SecretFinding {
   maskedExcerpt: string;
 }
 
+/**
+ * Explicit per-line opt-out for intentionally secret-shaped TEST FIXTURES.
+ * The marker must appear on the same source line as the fixture value, so
+ * allowing it is a deliberate, reviewable act by the author — the gate
+ * never infers allowances from content (an attacker must not be able to
+ * weaken the scan by naming a real secret "example").
+ */
+export const SECRET_FIXTURE_MARKER = 'eil-allow-secret-fixture';
+
 export function maskExcerpt(text: string): string {
   // Keep the first 4 characters as a review hint; always mask at least 6
   // characters (capped at 24) so even short findings are not exposed.
@@ -105,6 +114,7 @@ export function maskExcerpt(text: string): string {
 export function scanForSecrets(added: AddedLine[]): SecretFinding[] {
   const findings: SecretFinding[] = [];
   for (const line of added) {
+    if (line.text.includes(SECRET_FIXTURE_MARKER)) continue;
     for (const pattern of SECRET_PATTERNS) {
       if (pattern.re.test(line.text)) {
         findings.push({ rule: pattern.rule, path: line.file, line: line.line, maskedExcerpt: maskExcerpt(line.text.trim()) });

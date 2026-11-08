@@ -30,7 +30,7 @@ unknown ≠ 0; merge только человеком).
 | Unknown-стоимость нигде не превращается в 0? | metrics.test.ts (13 кейсов) + ledger/records.ts `validateCost` |
 | Acceptance отделён от гейтов? | `eil accept` (`context-commands.ts`) + тест `phase5-metrics-accept` |
 | Bench честен о несопоставимости? | `benchmarks/manifest.ts` `analyzeComparability` + тесты |
-| Ограничения опубликованы? | LIMITATIONS.md автогенерируется каждым прогоном; пример — в любом `--out` bench-прогона |
+| Ограничения опубликованы? | Реальный опубликованный артефакт прогона: `ops/bench-artifacts/latest/` (results.json, samples, logs, LIMITATIONS.md; `npm run bench:smoke` воспроизводит) |
 
 ## Приглашение к сомнению (специально для ревьюера)
 

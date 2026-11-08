@@ -6,6 +6,7 @@ quality:
   required:
     - "path-scope"
     - "import-boundaries"
+    - "secrets-scan"
   commands:
     # Placeholder defaults; the self-check does not execute command gates
     # (they are not required here), kept for operator reference.

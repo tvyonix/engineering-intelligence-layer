@@ -1,0 +1,242 @@
+{
+  "schemaVersion": 1,
+  "scenario": "beaver-smoke",
+  "baseCommit": "794af510599d527a6cf271d0159dd4374c7017ed",
+  "seed": 7,
+  "repetitions": 3,
+  "comparable": false,
+  "comparabilityReasons": [
+    "fewer than two variants: nothing to compare (run is recorded, not compared)"
+  ],
+  "reproducible": true,
+  "counts": {
+    "total": 18,
+    "executed": 18,
+    "failed": 0,
+    "pending": 0
+  },
+  "metricsHonesty": [
+    "human acceptance: none recorded in bench mode → Cost per Accepted Task and acceptance_rate are UNAVAILABLE (not zero-filled)",
+    "attempt costs: unknown unless a variant provides measured usage → Cascade Waste components are unknown, never $0",
+    "regressions: attribution only from artifact evidence (command/check output); no inferred numbers"
+  ],
+  "limitationsFile": "LIMITATIONS.md",
+  "outcomes": [
+    {
+      "variant": "B",
+      "step": 1,
+      "repetition": 1,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 2,
+      "repetition": 1,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 3,
+      "repetition": 1,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 4,
+      "repetition": 1,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 5,
+      "repetition": 1,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 6,
+      "repetition": 1,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 1,
+      "repetition": 2,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 2,
+      "repetition": 2,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 3,
+      "repetition": 2,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 4,
+      "repetition": 2,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 5,
+      "repetition": 2,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 6,
+      "repetition": 2,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 1,
+      "repetition": 3,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 2,
+      "repetition": 3,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 3,
+      "repetition": 3,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 4,
+      "repetition": 3,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 5,
+      "repetition": 3,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    },
+    {
+      "variant": "B",
+      "step": 6,
+      "repetition": 3,
+      "status": "executed",
+      "commandExitCode": 0,
+      "checkVerdict": "needs_review",
+      "checkExitCode": 0,
+      "notes": [
+        "eil check: verdict needs_review (exit 0)"
+      ]
+    }
+  ]
+}

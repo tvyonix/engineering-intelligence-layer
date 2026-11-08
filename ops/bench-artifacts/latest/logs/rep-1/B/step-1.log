@@ -1,0 +1,9 @@
+# command: node bench-step.mjs 1
+# exitCode: 0
+# timedOut: false; capKilled: false; durationMs: 53
+
+--- stdout ---
+PROBE OK: steps 1..1 verified
+
+--- stderr ---
+
