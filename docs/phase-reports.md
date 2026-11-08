@@ -103,6 +103,47 @@ All six gates checked with evidence in `docs/release-gates-v0.2.md`;
 self-check (`npm run selfcheck`) runs EIL's own gates against this
 repository in CI (import boundaries vs the root commit).
 
+## Post-release hardening (commits 0771511 … field validation)
+
+- **3.2 sandbox security test executed** — 22/22 PASS (Docker Desktop,
+  node:22-bookworm): FS/secrets/network/process isolation, 5 escape
+  scenarios, resource limits (incl. the memory-swap lesson), and `eil
+  check` running INSIDE the hardened container with an untouched
+  workspace. Found along the way: check portability (lazy imports of
+  ts-morph/better-sqlite3 — no native module loads in the check path,
+  verified via a module._load hook), `--json` swallowing failure reasons,
+  and the alpine/git image requirement. Sign-off of the runner
+  infrastructure stays with 1.7.
+- **4.2–4.4 + 3.1**: isolated workspaces (locks live OUTSIDE the
+  workspace — an in-workspace lock polluted every diff; found by pipeline
+  tests), deterministic cascade planner, failed-attempt artifact capture.
+- **4.5 (deterministic surface)**: timeout / provider-unavailable (127) /
+  reproducible exit-1 escalation / budget exhaustion / blocked-risk — via
+  the engine adapter contract (`ScriptedEngineRunner` maps command
+  outcomes onto typed failure signatures; model-API failures land with
+  the live engine).
+- **3.6 `eil run`**: full attempt pipeline CLI with the operator-supplied
+  `execution.engineCommand`; ledger records BOTH the engine attempt and
+  the eil-check verification attempt (design §11 — found by the CLI test).
+- **Dogfooding**: self-check now includes `secrets-scan` — it immediately
+  flagged 9 secret-shaped test fixtures; resolved by the explicit
+  `eil-allow-secret-fixture` line marker (allowances are reviewable acts
+  in the source, never inferred from content).
+- **CI incident & fix**: every GitHub Actions run since the first commit
+  was red (ERR_IPC_CHANNEL_CLOSED). Root cause: better-sqlite3@13
+  prebuilt segfaults on node 20 (reproduced with a one-line require,
+  exit 139). Pinned 12.x; full timeline in decisions.md (2026-11-07).
+- **Field validation** (`npm run field:test`, weekly in CI): real OSS
+  repositories at pinned SHAs — zod (152 references through namespace
+  usages; impact: 7 changed → 180 affected/28 tests) and hono (6
+  pre-existing import cycles correctly classified as inherited). The
+  test itself caught and fixed a UX bug (`eil report` demanded --repo).
+- **Dependency security**: runtime audit clean — tinypool critical closed
+  by a scoped override, zod high closed by the 4.6.7 upgrade (2×
+  `z.record(k,v)` migration; strict semantics re-verified). CI now fails
+  on any high+ in the prod chain (`npm audit --omit=dev`). Remaining 2
+  moderate are dev-tooling only (breaking vitest 5 not justified yet).
+
 ## Open items (explicitly outside the executor's scope)
 
 1.7 security design review (brief: docs/security-review-brief.md);

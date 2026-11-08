@@ -86,3 +86,26 @@ linux arm64/x64, полный прогон 195/195 параллельно). Ми
 дополнена фактом: нативная зависимость уже однажды роняла весь тестовый
 конкур тихо; при ревью — проверить целесообразность замера на
 node-sqlite3-wasm как альтернативы без нативного кода.
+
+## 2026-11-08 — Dependency security: runtime chain clean, dev chain accepted
+
+**Контекст.** `npm audit` показывал 13 уязвимостей (2 critical, 1 high) с
+первого коммита — никто их не читал (см. урок ADR от 2026-11-07 про CI).
+
+**Разбор и действия.**
+- `tinypool ≤2.1.1` (critical, prototype-pollution → RCE в опциях воркера;
+  dev-цепочка vitest) — закрыто точечным `overrides: { tinypool: ^2.1.2 }`
+  вместо breaking-апгрейда vitest 5; suite 199/199 зелёной.
+- `zod <4.6.6` (high, memory exhaustion на oversized constrained
+  collections) — **runtime**-зависимость (валидация контрактов/политик).
+  Апгрейд до zod 4.6.7 выполнен: поверхность API консервативна, единственная
+  миграция — `z.record(v)` → `z.record(k, v)` (2 вызова). Strict-семантика
+  контрактов подтверждена тестами (unknown-field rejection).
+- Остаток: 2 moderate только в dev-инструментах (`@vitest/mocker`,
+  `minimatch` ReDoS-класс). Фикс требует breaking vitest 5 в стабильной
+  ветке — принято НЕ делать до отдельного решения; экспозиция ограничена
+  парсингом собственных globs в тестах.
+
+**Защита от регрессий.** В CI добавлен шаг
+`npm audit --omit=dev --audit-level=high`: падает, если в runtime-цепочке
+появится high/critical. Dev-цепочка сознательно вне жёсткой полки.

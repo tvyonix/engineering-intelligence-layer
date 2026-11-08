@@ -23,7 +23,7 @@ export const policySchema = z
       .object({
         registry: z.string().min(1),
         forbiddenComponents: z.array(z.string().min(1)).optional(),
-        forbiddenProps: z.record(z.array(z.string().min(1))).optional(),
+        forbiddenProps: z.record(z.string(), z.array(z.string().min(1))).optional(),
         componentImports: z.array(z.string().min(1)).optional(),
         allowedImports: z.array(z.string().min(1)).optional(),
         forbidRawColors: z.boolean().optional(),
@@ -37,7 +37,7 @@ export const policySchema = z
          * Authoritative gate commands, operator-controlled (never derived
          * from repository content). Keys are gate ids: types, lint, tests.
          */
-        commands: z.record(z.string()).optional(),
+        commands: z.record(z.string(), z.string()).optional(),
       })
       .strict(),
     /**

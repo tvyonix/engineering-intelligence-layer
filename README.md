@@ -46,31 +46,21 @@ docs/security-review-brief.md  # бриф для Tier-1 security review (task 1.
 ## Файлы
 
 ```text
-openspec/
-  config.yaml
-  changes/establish-engineering-intelligence-layer/
-    proposal.md
-    design.md
-    tasks.md
-    specs/
-      task-contract/spec.md
-      engine-adapter/spec.md
-      diff-quality/spec.md
-      secure-execution/spec.md
-      evaluation-ledger/spec.md
-      evolution-benchmark/spec.md
-      routing-policy/spec.md
-      delivery-evidence/spec.md
-    .openspec.yaml
-examples/
-  task.yaml
-  policy.yaml
-  benchmark.yaml
-  codex-or-glm-handoff.md
-docs/
-  threat-model.md
-  experiments.md
-  implementation-strategy.md
+openspec/                        # спецификация change (proposal/design/tasks/specs)
+examples/                        # примеры task/policy/benchmark + handoff
+docs/                            # decisions (ADR), security brief, phase reports,
+                                 # release gates, review handoff, plans
+src/apps/cli/                    # bin `eil`: check, run, symbols, references,
+                                 # impact, report, bench, accept, metrics, ledger
+src/packages/…                   # contracts, policy-engine, diff-inspector,
+                                 # quality-gates, context-tools, ledger,
+                                 # evidence, isolated-runner, agent-adapters,
+                                 # runner-pipeline, benchmarks
+tests/                           # unit + интеграционные (fixture-репозитории)
+ops/                             # self-policy/task, sandbox results,
+                                 # bench artifacts, field-test results
+scripts/                         # self-check, sandbox test, bench smoke, field test
+.github/workflows/               # ci (matrix + self-check + audit), field (OSS)
 ```
 
 ## Рекомендуемый порядок
