@@ -111,7 +111,16 @@ export function pathScopeGate(): Gate {
       // exclude-hidden untracked, nested repos) are integrity violations
       // regardless of scope — an honest diff cannot contain what git
       // refuses to report.
+      const ignoreHidden = ctx.policy.workspaceIntegrity?.ignoreHidden ?? [];
+      let hiddenMatcher: ((p: string) => boolean) | null = null;
+      if (ignoreHidden.length > 0) {
+        const picomatch = (await import('picomatch')).default;
+        hiddenMatcher = (p: string) => picomatch.isMatch(p, ignoreHidden, { dot: true });
+      }
       for (const hidden of ctx.diff.hiddenChanges) {
+        if (hiddenMatcher !== null && hidden.kind === 'untracked-hidden-by-exclude' && hiddenMatcher(hidden.path)) {
+          continue; // operator-declared intentional build artifact
+        }
         violations.push({
           rule: `hidden-change:${hidden.kind}`,
           path: hidden.path,

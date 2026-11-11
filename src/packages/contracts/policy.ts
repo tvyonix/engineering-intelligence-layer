@@ -78,6 +78,18 @@ export const policySchema = z
      * (1.7 hardening — diff authors cannot self-allow secrets).
      */
     allowSecretFixtureMarkers: z.array(z.string().min(1)).optional(),
+    /**
+     * Operator-declared build artifacts whose exclusion (.gitignore) is
+     * INTENTIONAL (node_modules, dist, evidence dirs). Everything else
+     * hidden by an exclude mechanism stays a hidden-change violation.
+     * Default: empty — every hidden path is reported.
+     */
+    workspaceIntegrity: z
+      .object({
+        ignoreHidden: z.array(z.string().min(1)),
+      })
+      .strict()
+      .optional(),
     /** Import boundary rules for the `import-boundaries` gate. */
     boundaries: z
       .object({
@@ -119,6 +131,7 @@ export interface ResolvedPolicy {
     maxCheapRetries?: number;
   };
   allowSecretFixtureMarkers?: string[];
+  workspaceIntegrity?: { ignoreHidden: string[] };
   dependencies?: { approvedFiles: string[] };
   boundaries?: {
     forbiddenImports?: { from: string; disallow: string[] }[];
@@ -188,6 +201,9 @@ export function toResolvedPolicy(policy: Policy, source: 'file' | 'default'): Re
   }
   if (policy.allowSecretFixtureMarkers !== undefined) {
     resolved.allowSecretFixtureMarkers = [...policy.allowSecretFixtureMarkers];
+  }
+  if (policy.workspaceIntegrity !== undefined) {
+    resolved.workspaceIntegrity = { ignoreHidden: [...policy.workspaceIntegrity.ignoreHidden] };
   }
   if (policy.dependencies !== undefined) {
     resolved.dependencies = { approvedFiles: [...policy.dependencies.approvedFiles] };

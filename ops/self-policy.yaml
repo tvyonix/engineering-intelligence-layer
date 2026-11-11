@@ -20,6 +20,13 @@ allowSecretFixtureMarkers:
   - "src/**/*.test.ts"
   - "tests/**"
   - "docs/**"
+workspaceIntegrity:
+  ignoreHidden:
+    - "node_modules/**"
+    - "dist/**"
+    - "eil-evidence/**"
+    - ".eil-self-check/**"
+    - "coverage/**"
 boundaries:
   forbiddenImports:
     # The packages layer must never depend on the CLI app layer.
