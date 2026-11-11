@@ -63,6 +63,11 @@ scripts/                         # self-check, sandbox test, bench smoke, field 
 .github/workflows/               # ci (matrix + self-check + audit), field (OSS)
 ```
 
+## Быстрый старт (для новичков)
+
+Пошаговая инструкция с нуля — с примерами, разбором вердиктов и частыми
+граблями: **[docs/getting-started.md](docs/getting-started.md)**.
+
 ## Рекомендуемый порядок
 
 1. Ознакомиться с `proposal.md` и `design.md`.
