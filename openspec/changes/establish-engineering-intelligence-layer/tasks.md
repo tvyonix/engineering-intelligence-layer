@@ -33,7 +33,7 @@
 - [x] 1.6 Проверить, что ни один LLM-ответ не может пометить failing mandatory gate как passed.
   <!-- Evidence: check mode has no LLM code path at all (no network calls in src); verdict is a pure function of GateResult (computeVerdict, unit-tested); runGates synthesizes errors for missing/throwing gates. Structural guarantee carries into later phases: gate results are produced only by deterministic runners. -->
 - [ ] 1.7 Tier-1 или человеческое security design review для политики выполнения инструментов и парсинга путей.
-  <!-- Brief prepared for the reviewer: docs/security-review-brief.md (7 areas + verdict format). Pending: independent Tier-1/human review; must complete before any vettedRepos entry beyond fixtures and before Phase 3. -->
+  <!-- Round 1 DONE (2026-11-11): independent review found 8 blockers + 5 majors + 9 minors; ALL fixed and verified against the reviewer's own repro scripts (exp1–exp4). Full response: docs/review-verdict-response.md. The self-check now runs in CI with the origin/main-pinned policy and the import-boundaries graph is live (it immediately caught 2 real violations in EIL itself). PENDING: re-review sign-off of the fixes (new surfaces: detectHiddenChanges, scanFilesForSecrets+allowlist, buildSandboxedEnv, .git snapshots in pipeline) — after that, Phase 3 gates open. -->
 
 ## Phase 2 — Context and observable task ledger
 
