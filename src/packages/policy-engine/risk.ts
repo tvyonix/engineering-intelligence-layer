@@ -73,6 +73,8 @@ export function classifyTaskRisk(input: {
       elevate('blocked', `protected path touched: ${violation.path}`);
     } else if (violation.rule === 'known-secret') {
       elevate('blocked', `potential secret in the diff: ${violation.path} (design.md §5: known secrets exfiltration is blocked)`);
+    } else if (violation.rule.startsWith('hidden-change:')) {
+      elevate('high', `${violation.rule}: ${violation.path} — the diff cannot be trusted to show all workspace changes`);
     } else if (violation.rule === 'symlink-escape' || violation.rule === 'symlink-unresolvable' || violation.rule === 'path-format') {
       elevate('high', `${violation.rule}: ${violation.path} — suspicious path shape, containment could not be proven`);
     } else if (violation.rule === 'dependency-manifest-changed') {

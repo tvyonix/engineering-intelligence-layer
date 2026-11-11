@@ -17,6 +17,22 @@ export interface GitCommandResult {
  * hostile or misconfigured shell (GIT_DIR, GIT_WORK_TREE, ...) cannot redirect
  * git at another repository or index; system gitconfig is ignored.
  */
+/**
+ * Repo-config hardening (1.7 review): values from the TARGET repository's
+ * .git/config must not execute on the host. These -c overrides defeat
+ * core.fsmonitor (spawns a helper process), diff.external (spawns an
+ * arbitrary command AND nullifies the patch) and core.attributesFile
+ * (repo-controlled gitattributes that can mark diffs binary).
+ */
+export const GIT_HARDENING_FLAGS: readonly string[] = [
+  '-c', 'core.fsmonitor=false',
+  '-c', 'core.attributesFile=/dev/null',
+  '-c', 'core.pager=cat',
+] as const;
+
+/** Builtin-diff enforcement flags for every `git diff` invocation. */
+export const DIFF_NO_EXTERNAL: readonly string[] = ['--no-ext-diff', '--no-textconv'] as const;
+
 export function gitEnv(): NodeJS.ProcessEnv {
   const env = { ...process.env };
   delete env['GIT_DIR'];
@@ -41,10 +57,14 @@ export interface RunGitOptions {
 
 /** Runs git read-only commands against the target repository. Never uses a shell. */
 export async function runGit(repoDir: string, args: readonly string[], options: RunGitOptions = {}): Promise<GitCommandResult> {
+  // git diff must never run repo-configured external diff/textconv
+  // helpers (1.7 review: diff.external executed on the host AND nulled
+  // the captured patch).
+  const finalArgs = args[0] === 'diff' ? ['diff', ...DIFF_NO_EXTERNAL, ...args.slice(1)] : args;
   try {
     const { stdout, stderr } = await execFileP(
       'git',
-      ['-C', repoDir, '-c', 'core.quotepath=false', ...args],
+      ['-C', repoDir, '-c', 'core.quotepath=false', ...GIT_HARDENING_FLAGS, ...finalArgs],
       {
         timeout: options.timeoutMs ?? 30000,
         maxBuffer: 64 * 1024 * 1024,
@@ -153,6 +173,12 @@ export function parseNameStatusZ(output: string): ChangedPath[] {
   return changed;
 }
 
+export interface HiddenChangeFinding {
+  kind: 'skip-worktree' | 'assume-unchanged' | 'untracked-hidden-by-exclude' | 'nested-git-repository';
+  path: string;
+  detail: string;
+}
+
 export interface DiffSummary {
   changed: ChangedPath[];
   untracked: string[];
@@ -162,6 +188,13 @@ export interface DiffSummary {
   baselineNote?: string;
   patch: string | null;
   patchTruncated: boolean;
+  /**
+   * Changes an engine could HIDE from a plain git diff (1.7 review):
+   * skip-worktree/assume-unchanged bits, untracked files excluded via
+   * .gitignore/.git/info/exclude, and nested git repositories whose
+   * content the parent repository does not report.
+   */
+  hiddenChanges: HiddenChangeFinding[];
 }
 
 const MAX_PATCH_BYTES = 16 * 1024 * 1024;
@@ -285,6 +318,8 @@ export async function collectDiff(repoDir: string, baseSha: string, headSha: str
 
   const patch = parts.join('');
   const patchTruncated = patch.length > MAX_PATCH_BYTES;
+
+  const hiddenChanges = await detectHiddenChanges(repoDir, untracked);
   return {
     changed,
     untracked,
@@ -293,5 +328,103 @@ export async function collectDiff(repoDir: string, baseSha: string, headSha: str
     baselineNote,
     patch: patchTruncated ? patch.slice(0, MAX_PATCH_BYTES) : patch,
     patchTruncated,
+    hiddenChanges,
   };
+}
+
+/**
+ * Detects the hiding tricks a workspace writer can use to keep changes out
+ * of `git diff`/`git status` output (1.7 review: an engine blinded the
+ * checker via .git/info/exclude + skip-worktree and got needs_review with
+ * zero changed files while writing outside the scope).
+ */
+async function detectHiddenChanges(repoDir: string, visibleUntracked: string[]): Promise<HiddenChangeFinding[]> {
+  const findings: HiddenChangeFinding[] = [];
+
+  // skip-worktree / assume-unchanged bits: git ls-files -v marks them S / h.
+  const lsV = await runGit(repoDir, ['ls-files', '-v', '-z']);
+  if (lsV.code === 0) {
+    for (const token of lsV.stdout.split('\0')) {
+      if (token.length === 0) continue;
+      const code = token.slice(0, 1);
+      const path = token.slice(2);
+      if (code === 'S') {
+        findings.push({ kind: 'skip-worktree', path, detail: 'skip-worktree bit set: modifications to this file are invisible to git diff' });
+      } else if (code === 'h') {
+        findings.push({ kind: 'assume-unchanged', path, detail: 'assume-unchanged bit set: modifications to this file are invisible to git status' });
+      }
+    }
+  }
+
+  // Untracked files hidden by ANY exclude mechanism (gitignore, global
+  // excludesfile, .git/info/exclude): compare with/without excludes.
+  const withoutExcludes = await runGit(repoDir, [
+    'ls-files', '--others', '--exclude-standard', '-z',
+    '-c', 'core.excludesFile=/dev/null',
+  ]);
+  if (withoutExcludes.code === 0) {
+    const visible = new Set(visibleUntracked);
+    const all = withoutExcludes.stdout.split('\0').filter((p) => p.length > 0);
+    const hidden = all.filter((p) => !visible.has(p) && !isGitignoreSelf(p));
+    for (const path of hidden.slice(0, 200)) {
+      findings.push({
+        kind: 'untracked-hidden-by-exclude',
+        path,
+        detail: 'untracked file hidden from git status by an exclude mechanism (gitignore / excludesfile / .git/info/exclude)',
+      });
+    }
+  }
+
+  // Nested git repositories: a directory untracked listing names as a
+  // boundary (trailing '/') that git does not descend into. Verify the
+  // nested .git directly on the filesystem.
+  const { existsSync } = await import('node:fs');
+  const { join: joinPath } = await import('node:path');
+  for (const untrackedPath of visibleUntracked) {
+    if (!untrackedPath.endsWith('/')) continue;
+    if (existsSync(joinPath(repoDir, untrackedPath, '.git'))) {
+      findings.push({
+        kind: 'nested-git-repository',
+        path: untrackedPath.slice(0, -1),
+        detail: 'nested git repository: its content is invisible to the parent repository diff',
+      });
+    }
+  }
+
+  // Files hidden by .gitignore / excludes: `git status --ignored=matching`
+  // lists them with the '!!' code. A workspace writer must not be able to
+  // park secrets or out-of-scope work where the diff never reports it.
+  const ignored = await runGit(repoDir, ['status', '--porcelain', '--ignored=matching', '-z']);
+  if (ignored.code === 0) {
+    for (const record of ignored.stdout.split('\0')) {
+      if (record.length === 0) continue;
+      const code = record.slice(0, 2);
+      const path = record.slice(3).replace(/\n/g, '\n');
+      if (!code.startsWith('!!')) continue;
+      if (isGitignoreSelf(path)) continue;
+      findings.push({
+        kind: 'untracked-hidden-by-exclude',
+        path,
+        detail: 'file present in the workspace but hidden from the diff by an exclude mechanism (.gitignore / excludesfile / .git/info/exclude)',
+      });
+    }
+  }
+  return dedupeFindings(findings);
+}
+
+function isGitignoreSelf(path: string): boolean {
+  const base = path.split('/').pop() ?? path;
+  return base === '.gitignore' || base === '.gitmodules';
+}
+
+function dedupeFindings(findings: HiddenChangeFinding[]): HiddenChangeFinding[] {
+  const seen = new Set<string>();
+  const out: HiddenChangeFinding[] = [];
+  for (const f of findings) {
+    const key = `${f.kind}:${f.path}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(f);
+  }
+  return out;
 }

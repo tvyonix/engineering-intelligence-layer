@@ -249,8 +249,9 @@ export async function runBench(options: BenchOptions): Promise<BenchRunOutput> {
           const notes: string[] = [];
           let checkVerdict: string | undefined;
           const taskFile = join(manifestDir, step.taskFile ?? variant.taskFile ?? '');
-          const policyFile = join(manifestDir, step.policyFile ?? variant.policyFile ?? '');
-          const hasCheck = (step.taskFile ?? variant.taskFile) !== undefined;
+          const hasPolicy = (step.policyFile ?? variant.policyFile) !== undefined;
+          const policyFile = hasPolicy ? join(manifestDir, (step.policyFile ?? variant.policyFile) as string) : undefined;
+          const hasCheck = (step.taskFile ?? variant.taskFile) !== undefined && hasPolicy;
 
           let status: BenchStepOutcome['status'] = 'pending';
           let commandExitCode: number | null | undefined = undefined;
@@ -339,7 +340,7 @@ export async function runBench(options: BenchOptions): Promise<BenchRunOutput> {
             const check = await options.check({
               repo: workspace.dir,
               task: taskFile,
-              policy: policyFile,
+              policy: policyFile as string,
               base: baseCommit,
               out: join(options.out, `rep-${repetition}`, variant.id, `step-${step.id}`),
             });

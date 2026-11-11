@@ -1,105 +1,101 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { addedLinesFromPatch, maskExcerpt, scanForSecrets } from './secrets-scan-gate.js';
-import { classifyTaskRisk } from '../policy-engine/risk.js';
-import { runCheck } from '../../apps/cli/main.js';
-import { openLedger, closeLedger } from '../ledger/db.js';
+import { redactSecretsInText, scanFilesForSecrets } from '../../src/packages/quality-gates/secrets-scan-gate.js';
+import { runCheck } from '../../src/apps/cli/main.js';
+import { openLedger, closeLedger } from '../../src/packages/ledger/db.js';
 
-describe('addedLinesFromPatch', () => {
-  const patch = [
-    'diff --git a/src/a.ts b/src/a.ts',
-    'index 111..222 100644',
-    '--- a/src/a.ts',
-    '+++ b/src/a.ts',
-    '@@ -1,3 +1,4 @@',
-    ' context line',
-    '+added line one',
-    '-removed line',
-    '+added line two',
-    '\\ No newline at end of file',
-  ].join('\n');
+describe('file-content scanning (1.7 rework)', () => {
+  const filesOf = (lines: { file: string; text: string }[], root: string) =>
+    lines.map((l) => ({ path: l.file, absolute: join(root, l.file) }));
 
-  it('extracts only added lines with correct new-file line numbers', () => {
-    const added = addedLinesFromPatch(patch);
-    expect(added).toEqual([
-      { file: 'src/a.ts', line: 2, text: 'added line one' },
-      { file: 'src/a.ts', line: 3, text: 'added line two' },
-    ]);
-  });
-
-  it('normalizes absolute untracked paths against the scan root', () => {
-    const untrackedPatch = [
-      'diff --git a/dev/null b/tmp/repo/src/new.ts',
-      '--- /dev/null',
-      '+++ b/tmp/repo/src/new.ts',
-      '@@ -0,0 +1,2 @@',
-      '+const a = 1;',
-      '+const b = 2;',
-    ].join('\n');
-    const added = addedLinesFromPatch(untrackedPatch, '/tmp/repo');
-    expect(added.map((l) => l.file)).toEqual(['src/new.ts', 'src/new.ts']);
-  });
-});
-
-describe('scanForSecrets', () => {
-  const line = (text: string, file = 'src/a.ts', lineNum = 1) => ({ file, line: lineNum, text });
-
-  it('detects structured secret signatures', () => {
-    const findings = scanForSecrets([
-      line('aws_key = "AKIAIOSFODNN7EXAMPLE"'), // eil-allow-secret-fixture
-      line('-----BEGIN RSA PRIVATE KEY-----'), // eil-allow-secret-fixture
-      line('token: ghp_ABCDEFGHIJKLMNOPQRSTUVWX'), // eil-allow-secret-fixture
-      line('slack: xoxb-123456789012-abcdef'), // eil-allow-secret-fixture
-      line('key = "AIzaSyA-1234567890abcdefghijklmnopqrstu"'), // eil-allow-secret-fixture
-    ]);
-    const rules = findings.map((f) => f.rule).sort();
-    expect(rules).toEqual(['aws-access-key', 'github-token', 'google-api-key', 'pem-private-key', 'slack-token']);
-  });
-
-  it('detects generic secret assignments but excludes placeholders', () => {
-    const findings = scanForSecrets([line('API_KEY = "s3cr3t-value-42"')]); // eil-allow-secret-fixture
-    expect(findings.map((f) => f.rule)).toEqual(['secret-assignment']);
-
-    const placeholders = scanForSecrets([
-      line('API_KEY = "example-placeholder-value"'),
-      line('password = "${env.PASSWORD}"'),
-      line('token: "dummy-value-for-tests"'),
-    ]);
-    expect(placeholders).toHaveLength(0);
-  });
-
-  it('the fixture marker suppresses a line, but never weakens others', () => {
-    const findings = scanForSecrets([
-      line('token: ghp_ABCDEFGHIJKLMNOPQRSTUVWX // eil-allow-secret-fixture'),
-      line('API_KEY = "real-looking-value-42"'), // eil-allow-secret-fixture
-    ]);
-    // The marked line is suppressed as an explicit test fixture...
-    expect(findings.some((f) => f.path === 'src/a.ts' && f.rule === 'github-token')).toBe(false);
-    // ...while the unmarked neighbour is still caught.
-    expect(findings.some((f) => f.rule === 'secret-assignment')).toBe(true);
-  });
-
-  it('ignores clean code lines', () => {
-    const findings = scanForSecrets([line('const answer = 42;'), line('export function greet(name: string): string { return name; }')]);
-    expect(findings).toHaveLength(0);
-  });
-
-  it('masks excerpts — the secret value never appears', () => {
-    const findings = scanForSecrets([line('API_KEY = "super-secret-value-123"')]); // eil-allow-secret-fixture
-    expect(findings[0]?.maskedExcerpt).toContain('*');
-    expect(findings[0]?.maskedExcerpt).not.toContain('super-secret-value-123');
-    expect(maskExcerpt('short')).toBe('shor******…');
-  });
-
-  it('risk classifier escalates known-secret findings to blocked', () => {
-    const assessment = classifyTaskRisk({
-      changedPaths: ['src/config.ts'],
-      violations: [{ rule: 'known-secret', path: 'src/config.ts:2', detail: 'aws-access-key', classification: 'new' }],
+  it('detects structured signatures and strict placeholders in CONTENT', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'eil-sec-'));
+    const lines = [
+      { file: 'src/a.ts', text: 'aws_key = "AKIAIOSFODNN7EXAMPLE"' }, // real-looking; EXAMPLE suffix is NOT an exemption
+      { file: 'src/b.ts', text: '-----BEGIN RSA PRIVATE KEY-----' },
+      { file: 'src/c.ts', text: 'API_KEY = "example"' }, // whole-value placeholder → exempt
+      { file: 'src/d.ts', text: 'password = "hunter2hunter2"; // a<b' }, // '<' is NOT an exemption
+      { file: 'src/e.ts', text: 'const answer = 42;' },
+    ];
+    for (const l of lines) {
+      await mkdir(join(root, l.file.split('/').slice(0, -1).join('/')), { recursive: true });
+      await writeFile(join(root, l.file), l.text + '\n', 'utf8');
+    }
+    const result = await scanFilesForSecrets(filesOf(lines, root), {
+      markerAllowed: () => false,
+      isBaselineLine: () => false,
     });
-    expect(assessment.risk).toBe('blocked');
+    const rules = result.findings.map((f) => `${f.rule}@${f.path}`);
+    expect(rules).toContain('aws-access-key@src/a.ts');
+    expect(rules).toContain('pem-private-key@src/b.ts');
+    expect(rules).toContain('secret-assignment@src/d.ts');
+    expect(result.findings.some((f) => f.path === 'src/c.ts')).toBe(false);
+    expect(result.findings.some((f) => f.path === 'src/e.ts')).toBe(false);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('marker works only via the policy allowlist; suppressions are recorded', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'eil-sec2-'));
+    await writeFile(join(root, 'src', 'fixture.ts'), 'token: ghp_ABCDEFGHIJKLMNOPQRSTUVWX // eil-allow-secret-fixture\n', { flag: 'wx' }).catch(async () => {
+      await mkdir(join(root, 'src'), { recursive: true });
+      await writeFile(join(root, 'src', 'fixture.ts'), 'token: ghp_ABCDEFGHIJKLMNOPQRSTUVWX // eil-allow-secret-fixture\n');
+    });
+    await mkdir(join(root, 'src'), { recursive: true });
+    const allowed = await scanFilesForSecrets([{ path: 'src/fixture.ts', absolute: join(root, 'src', 'fixture.ts') }], {
+      markerAllowed: () => true,
+      isBaselineLine: () => false,
+    });
+    expect(allowed.findings).toHaveLength(0);
+    expect(allowed.suppressed).toHaveLength(1);
+    const notAllowed = await scanFilesForSecrets([{ path: 'src/fixture.ts', absolute: join(root, 'src', 'fixture.ts') }], {
+      markerAllowed: () => false,
+      isBaselineLine: () => false,
+    });
+    // Same line WITHOUT the policy allowlist is a finding — diff authors
+    // cannot self-allow secrets.
+    expect(notAllowed.findings.map((f) => f.rule)).toContain('github-token');
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('NUL bytes do not hide content (binary normalization)', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'eil-sec3-'));
+    await mkdir(join(root, 'src'), { recursive: true });
+    await writeFile(join(root, 'src', 'bin.ts'), Buffer.from('const k = "AKIAABCDEFGHIJKLMNOP";\n// \0\nmore\n'));
+    const result = await scanFilesForSecrets([{ path: 'src/bin.ts', absolute: join(root, 'src', 'bin.ts') }], {
+      markerAllowed: () => false,
+      isBaselineLine: () => false,
+    });
+    expect(result.findings.map((f) => f.rule)).toContain('aws-access-key');
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('baseline lines are classified inherited and do not fail', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'eil-sec4-'));
+    await mkdir(join(root, 'src'), { recursive: true });
+    await writeFile(join(root, 'src', 'old.ts'), 'export const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";\n');
+    const result = await scanFilesForSecrets([{ path: 'src/old.ts', absolute: join(root, 'src', 'old.ts') }], {
+      markerAllowed: () => false,
+      isBaselineLine: (_p, line) => line.includes('AKIAIOSFODNN7EXAMPLE'),
+    });
+    expect(result.findings).toHaveLength(1);
+    expect(result.findings[0]?.inherited).toBe(true);
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it('redactSecretsInText masks structured and assignment secrets in patches', () => {
+    const text = [
+      '+const AWS_KEY = "AKIAABCDEFGHIJKLMNOP";',
+      '+password = "super-secret-value-123"',
+      '+const clean = 1;',
+    ].join('\n');
+    const redacted = redactSecretsInText(text);
+    expect(redacted).not.toContain('AKIAABCDEFGHIJKLMNOP');
+    expect(redacted).not.toContain('super-secret-value-123');
+    expect(redacted).toContain('const clean = 1;');
+    expect(redacted).toContain('[REDACTED:aws-access-key]');
   });
 });
 
@@ -149,9 +145,19 @@ policy:
       'utf8',
     );
     const policyPath = join(root, 'policy.yaml');
-    await writeFile(policyPath, `version: 1\nquality:\n  required:\n    - "secrets-scan"\n`, 'utf8');
+    await writeFile(
+      policyPath,
+      `version: 1
+quality:
+  required:
+    - "secrets-scan"
+allowSecretFixtureMarkers:
+  - "**"
+`,
+      'utf8',
+    );
     const out = await runCheck({ repo: repoDir, task: taskPath, policy: policyPath, out: join(root, 'ev'), quiet: true });
-    const { evidenceBundleSchema } = await import('../evidence/bundle.js');
+    const { evidenceBundleSchema } = await import('../../src/packages/evidence/bundle.js');
     const evidence = evidenceBundleSchema.parse(JSON.parse(await import('node:fs/promises').then((fs) => fs.readFile(join(out.evidenceDir as string, 'evidence.json'), 'utf8'))));
     return { exitCode: out.exitCode, evidence: evidence as unknown as Record<string, unknown>, evidenceDir: out.evidenceDir as string };
   }

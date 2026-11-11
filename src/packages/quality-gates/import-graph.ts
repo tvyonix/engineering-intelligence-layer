@@ -6,7 +6,7 @@ export interface ImportEdge {
   to: string;
 }
 
-const SCANNED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs']);
+const SCANNED_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts']);
 const SKIPPED_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.eil']);
 const MAX_FILES = 20_000;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
@@ -68,16 +68,37 @@ export function extractRelativeSpecifiers(source: string): string[] {
   return extractAllModuleSpecifiers(source).filter((spec) => spec.startsWith('./') || spec.startsWith('../'));
 }
 
+/**
+ * NodeNext-style specifier rewriting: `./x.js` may reference `x.ts` on
+ * disk (TS emits .js while sources are .ts). Without this mapping the
+ * graph silently loses every edge in NodeNext projects — found by the
+ * 1.7 review (the self-check was passing over an EMPTY graph).
+ */
+function rewriteJsSpecifier(spec: string): string[] {
+  const map: Record<string, string[]> = { '.js': ['.ts', '.tsx'], '.mjs': ['.mts'], '.cjs': ['.cts'], '.jsx': ['.tsx'] };
+  for (const [jsExt, tsExts] of Object.entries(map)) {
+    if (spec.endsWith(jsExt)) {
+      const stem = spec.slice(0, -jsExt.length);
+      return tsExts.map((tsExt) => `${stem}${tsExt}`);
+    }
+  }
+  return [spec];
+}
+
 function resolveRelative(fromFile: string, spec: string, known: Set<string>): string | null {
   const baseDir = posix.dirname(fromFile.replace(/\\/g, '/'));
-  const withoutExt = posix.normalize(posix.join(baseDir, spec));
-  const candidates = [
-    withoutExt,
-    ...['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].map((ext) => `${withoutExt}${ext}`),
-    ...['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'].map((ext) => `${withoutExt}/index${ext}`),
-  ];
-  for (const candidate of candidates) {
-    if (known.has(candidate)) return candidate;
+  const specs = rewriteJsSpecifier(spec);
+  const extensions = ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.mts', '.cts'];
+  for (const candidateSpec of specs) {
+    const withoutExt = posix.normalize(posix.join(baseDir, candidateSpec));
+    const candidates = [
+      withoutExt,
+      ...extensions.map((ext) => `${withoutExt}${ext}`),
+      ...extensions.map((ext) => `${withoutExt}/index${ext}`),
+    ];
+    for (const candidate of candidates) {
+      if (known.has(candidate)) return candidate;
+    }
   }
   return null;
 }

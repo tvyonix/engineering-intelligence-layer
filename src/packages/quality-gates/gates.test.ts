@@ -131,3 +131,14 @@ describe('execution policy (default deny)', () => {
     expect(isExecutionPermitted(policy, '/not/vetted').permitted).toBe(false);
   });
 });
+
+describe('NodeNext specifier resolution (1.7 blocker fix)', () => {
+  it('resolves ./x.js imports to x.ts sources — the graph is not empty in NodeNext projects', async () => {
+    const { resolveRelativeInKnownSet } = await import('./import-graph.js');
+    const known = new Set(['src/a.ts', 'src/deep/b.ts', 'src/c.mts']);
+    expect(resolveRelativeInKnownSet('src/a.ts', './deep/b.js', known)).toBe('src/deep/b.ts');
+    expect(resolveRelativeInKnownSet('src/a.ts', './a.js', known)).toBe('src/a.ts');
+    expect(resolveRelativeInKnownSet('src/a.ts', './c.mjs', known)).toBe('src/c.mts');
+    expect(resolveRelativeInKnownSet('src/a.ts', './missing.js', known)).toBeNull();
+  });
+});

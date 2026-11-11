@@ -49,6 +49,8 @@ export interface RegressionTaxMetric {
   attributedRepairUsd?: number;
   totalChangeUsd?: number;
   unattributedCount?: number;
+  lowerBound?: boolean;
+  unknownCount?: number;
   notes: string[];
 }
 
@@ -97,12 +99,17 @@ interface AcceptedTaskRow {
   id: string;
 }
 
+/**
+ * A task is accepted only if its LATEST review accepted it — accept-then-
+ * reject must not leave the task counted as accepted (1.7 review).
+ */
 function acceptedTaskIds(ledger: Ledger): string[] {
   const rows = ledger.db
     .prepare(
-      `SELECT DISTINCT t.id AS id
-       FROM tasks t JOIN reviews r ON r.task_id = t.id
-       WHERE r.accepted = 1`,
+      `SELECT task_id AS id FROM reviews r
+       WHERE observed_at = (
+         SELECT MAX(r2.observed_at) FROM reviews r2 WHERE r2.task_id = r.task_id
+       ) AND accepted = 1`,
     )
     .all() as AcceptedTaskRow[];
   return rows.map((r) => r.id);
@@ -125,6 +132,13 @@ export function costPerAcceptedTask(ledger: Ledger): MetricValue {
     const sums = sumKnownCosts(attemptCostRows(ledger, taskId));
     knownUsd += sums.knownUsd;
     unknownCount += sums.unknownCount;
+  }
+  if (knownUsd === 0 && unknownCount > 0) {
+    return {
+      available: false,
+      reason: 'no measured costs at all (every attempt is unknown-cost): an unknown-only sum is not presented as $0 (1.7 review)',
+      notes,
+    };
   }
   if (unknownCount > 0) {
     notes.push(`${unknownCount} attempt(s) with unknown cost are excluded from the numeric sum — the true value is at least this number`);
@@ -168,7 +182,17 @@ export function cascadeWaste(ledger: Ledger): MetricValue {
     if (accepted.has(attempt.task_id) && lastCompleteByTask.get(attempt.task_id) === attempt.id) continue;
     wasteRows.push({ api_cost_usd: attempt.api_cost_usd, cost_kind: attempt.cost_kind });
   }
+  if (attempts.length === 0) {
+    return { available: false, reason: 'empty ledger: no attempts recorded, waste is undefined rather than zero (1.7 review)', notes };
+  }
   const { knownUsd, unknownCount } = sumKnownCosts(wasteRows);
+  if (knownUsd === 0 && unknownCount > 0) {
+    return {
+      available: false,
+      reason: 'all wasted attempts have unknown cost: an unknown-only waste is not presented as $0 (1.7 review)',
+      notes,
+    };
+  }
   if (unknownCount > 0) {
     notes.push(`${unknownCount} wasted attempt(s) have unknown cost and are excluded from the numeric sum — the true waste is at least this number`);
   }
@@ -226,14 +250,16 @@ export function relativeEvolutionCost(
     if (ratio === null) complete = false;
     if (controlUnknown) notes.push(`step ${step}: control '${options.control}' has no measured cost — ratio unavailable`);
     if (variantUnknown) notes.push(`step ${step}: variant '${options.variant}' has no measured cost — ratio unavailable`);
+    const controlMeasured = controlSums.knownUsd > 0 || (controlSums.unknownCount === 0 && controlRows.length > 0);
+    const variantMeasured = variantSums.knownUsd > 0 || (variantSums.unknownCount === 0 && variantRows.length > 0);
     perStep.push({
       step,
-      controlUsd: controlSums.knownUsd,
-      variantUsd: variantSums.knownUsd,
+      controlUsd: controlMeasured ? controlSums.knownUsd : null,
+      variantUsd: variantMeasured ? variantSums.knownUsd : null,
       ratio,
     });
-    controlTotal += controlSums.knownUsd;
-    variantTotal += variantSums.knownUsd;
+    controlTotal += controlMeasured ? controlSums.knownUsd : 0;
+    variantTotal += variantMeasured ? variantSums.knownUsd : 0;
   }
 
   if (!complete) {
@@ -324,6 +350,12 @@ export function regressionTax(ledger: Ledger, taskId?: string): RegressionTaxMet
     attributedRepairUsd: repairSums.knownUsd,
     totalChangeUsd: totalChange,
     unattributedCount,
+    ...(repairSums.unknownCount > 0 || totalUnknown > 0
+      ? {
+          lowerBound: true as const,
+          unknownCount: repairSums.unknownCount + totalUnknown,
+        }
+      : {}),
     notes,
   };
 }

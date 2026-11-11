@@ -11,7 +11,14 @@ import { exportJsonl, recordReview } from '../../packages/ledger/records.js';
 import { computeBenchMetrics, renderMetricsMarkdown } from '../../packages/ledger/metrics.js';
 import { buildPrReport } from '../../packages/evidence/pr-report.js';
 import { runBench } from '../../packages/benchmarks/runner.js';
-import { runCheck } from './main.js';
+
+/**
+ * runCheck is INJECTED by main.ts (the CLI layer's entry). Importing it
+ * statically here created a main ↔ context-commands cycle that EIL's own
+ * import-boundaries gate surfaced once NodeNext resolution was fixed
+ * (1.7 review).
+ */
+export type RunCheckFn = (options: import('./types.js').CheckOptions) => Promise<import('./types.js').CheckRunOutput>;
 
 export interface ContextCommandOutput {
   exitCode: 0 | 1 | 2;
@@ -186,6 +193,8 @@ export async function runBenchCommand(options: {
   db?: string;
   repeat?: number;
   quiet?: boolean;
+  /** Injected by main.ts (cycle break, see RunCheckFn). */
+  runCheckImpl: RunCheckFn;
 }): Promise<ContextCommandOutput> {
   const result = await runBench({
     manifest: options.manifest,
@@ -197,7 +206,7 @@ export async function runBenchCommand(options: {
     repeat: options.repeat,
     // Dependency inversion: the CLI layer supplies the real checker.
     check: async (request) => {
-      const check = await runCheck({ ...request, quiet: true });
+      const check = await options.runCheckImpl({ ...request, quiet: true });
       return { exitCode: check.exitCode, evidenceDir: check.evidenceDir };
     },
     quiet: options.quiet,
@@ -239,6 +248,14 @@ export async function runAccept(options: {
       | undefined;
     if (task === undefined) {
       return fail(messages, `task '${options.task}' not found in ledger '${options.db}'`);
+    }
+    // 1.7 review: acceptance must never follow a blocked/errored check —
+    // only a machine-clean needs_review state can be accepted by a human.
+    if (options.rejected !== true && task.status !== 'needs_review') {
+      return fail(
+        messages,
+        `task '${options.task}' has status '${task.status}': only 'needs_review' tasks can be accepted (fix the failing gates first); rejection is always allowed`,
+      );
     }
     const accepted = options.rejected !== true;
     const reviewer = options.reviewer ?? 'human:unspecified';
@@ -315,6 +332,8 @@ export async function runRun(options: {
   ledger?: string;
   strongTierConfigured?: boolean;
   quiet?: boolean;
+  /** Injected by main.ts (cycle break, see RunCheckFn). */
+  runCheckImpl: RunCheckFn;
 }): Promise<ContextCommandOutput> {
   const messages: string[] = [];
   const { parse: parseYaml } = await import('yaml');
@@ -351,7 +370,7 @@ export async function runRun(options: {
     policy: resolved,
     engine,
     checker: async (request) => {
-      const check = await runCheck({ ...request, policy: options.policy, quiet: true });
+      const check = await options.runCheckImpl({ ...request, policy: options.policy, quiet: true });
       return { exitCode: check.exitCode, evidenceDir: check.evidenceDir };
     },
     out: options.out,

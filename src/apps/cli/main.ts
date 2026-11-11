@@ -20,29 +20,16 @@ import { openLedger, closeLedger } from '../../packages/ledger/db.js';
 import { recordCheckRun } from '../../packages/ledger/records.js';
 import { renderTaskRecordMarkdown } from '../../packages/evidence/task-record.js';
 import { classifyTaskRisk } from '../../packages/policy-engine/risk.js';
+import { redactSecretsInText } from '../../packages/quality-gates/secrets-scan-gate.js';
 
 // Context/bench/report/accept/metrics commands are imported LAZILY inside
 // their branches: check mode must not load ts-morph or the native ledger
 // module (portability of check to containers — task 3.2/T7).
 
-export const EIL_VERSION = '0.2.0-alpha.0';
+export const EIL_VERSION = '0.2.0-alpha.4';
 
-export interface CheckOptions {
-  repo: string;
-  task: string;
-  base?: string;
-  policy?: string;
-  out?: string;
-  ledger?: string;
-  quiet?: boolean;
-}
-
-export interface CheckRunOutput {
-  exitCode: 0 | 1 | 2;
-  bundleJson: string | null;
-  evidenceDir: string | null;
-  messages: string[];
-}
+export type { CheckOptions, CheckRunOutput } from './types.js';
+import type { CheckOptions, CheckRunOutput } from './types.js';
 
 function log(out: CheckRunOutput, quiet: boolean, message: string): void {
   out.messages.push(message);
@@ -237,7 +224,9 @@ export async function runCheck(options: CheckOptions): Promise<CheckRunOutput> {
     bundle,
     renderSummaryMarkdown(bundle),
     [
-      { fileName: diffLogName, content: `${diff.patch}${diff.patchTruncated ? '\n# [truncated]\n' : ''}` },
+      // 1.7 review: raw secrets must not land in evidence — patch text is
+      // redacted before storage (masked findings remain in the gate artifact).
+      { fileName: diffLogName, content: `${redactSecretsInText(diff.patch ?? '')}${diff.patchTruncated ? '\n# [REDACTED-TRUNCATED]\n' : ''}` },
       { fileName: 'changed-files.txt', content: `${changedFilesLog}\n` },
     ],
   );
@@ -376,6 +365,7 @@ type ParsedArgs = { _: string[] } & { [key: string]: string | boolean | string[]
 
 function parseArgs(argv: string[]): ParsedArgs {
   const valueFlags = new Set(['--repo', '--task', '--base', '--policy', '--out', '--ledger', '--file', '--name', '--db', '--evidence', '--manifest', '--reviewer', '--duration-seconds', '--changes-requested', '--scenario', '--variant', '--control', '--repeat']);
+  const booleanFlags = new Set(['--json', '--help', '--version', '--rejected', '--markdown']);
   const parsed: ParsedArgs = { _: [] as string[] };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i] as string;
@@ -386,9 +376,8 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
       continue;
     }
-    if (arg === '--json') parsed['json'] = true;
-    else if (arg === '--help' || arg === '-h') parsed['help'] = true;
-    else if (arg === '--version') parsed['version'] = true;
+    if (booleanFlags.has(arg)) parsed[arg.slice(2)] = true;
+    else if (arg === '-h') parsed['help'] = true;
     else if (arg.startsWith('--')) throw new Error(`unknown option '${arg}'`);
     else parsed._.push(arg);
   }
@@ -461,7 +450,7 @@ async function contextCommand(command: string, args: ParsedArgs): Promise<0 | 1 
   const repo = args['repo'];
   // ledger and report operate on files (a ledger DB / an evidence bundle),
   // not on a repository — no --repo requirement for them.
-  if (command !== 'ledger' && command !== 'report' && typeof repo !== 'string') {
+  if (command !== 'ledger' && command !== 'report' && command !== 'accept' && command !== 'metrics' && typeof repo !== 'string') {
     console.error(`eil: error: --repo is required for '${command}'`);
     return 2;
   }
@@ -522,6 +511,7 @@ async function contextCommand(command: string, args: ParsedArgs): Promise<0 | 1 
         out,
         db: typeof args['db'] === 'string' ? args['db'] : undefined,
         repeat: typeof args['repeat'] === 'string' ? Number(args['repeat']) || undefined : undefined,
+        runCheckImpl: runCheck,
         quiet: args['json'] === true,
       });
       if (!quietArg(args)) for (const message of result.messages) console.log(message);
@@ -563,6 +553,7 @@ async function contextCommand(command: string, args: ParsedArgs): Promise<0 | 1 
         policy,
         out,
         ledger: typeof args['ledger'] === 'string' ? args['ledger'] : undefined,
+        runCheckImpl: runCheck,
       });
       if (result.json !== null && args['json'] === true) console.log(result.json);
       if (!quietArg(args)) for (const message of result.messages) console.error(message);

@@ -99,13 +99,13 @@ describe('Cascade Waste', () => {
     expect(metric.notes.join(' ')).toContain('not a counterfactual routing regret');
   });
 
-  it('counts unknown-cost waste without adding zeros', () => {
+  it('unknown-only waste is UNAVAILABLE, not a $0 lower bound (1.7 review)', () => {
     ensureTask('w3');
     recordAttempt(ledger, { taskId: 'w3', engine: 'pi', status: 'failed', startedAt: 'x', costKind: 'unknown' });
     const metric = cascadeWaste(ledger);
-    expect(metric.valueUsd).toBe(0);
-    expect(metric.unknownCount).toBe(1);
-    expect(metric.lowerBound).toBe(true);
+    expect(metric.available).toBe(false);
+    expect(metric.reason).toContain('unknown-only');
+    expect(metric.valueUsd).toBeUndefined();
   });
 });
 

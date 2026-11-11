@@ -106,6 +106,8 @@ export function parseBenchmarkManifest(input: unknown): ParsedManifest {
  */
 export function variantFingerprint(variant: BenchmarkManifest['variants'][number]): Record<string, unknown> {
   return {
+    agent: variant.agent,
+    model: variant.model,
     command: variant.command ?? null,
     taskFile: variant.taskFile ?? null,
     policyFile: variant.policyFile ?? null,

@@ -72,6 +72,12 @@ export const policySchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Privileged allowlist for the eil-allow-secret-fixture marker: the
+     * marker suppresses a finding ONLY in files matching these globs
+     * (1.7 hardening — diff authors cannot self-allow secrets).
+     */
+    allowSecretFixtureMarkers: z.array(z.string().min(1)).optional(),
     /** Import boundary rules for the `import-boundaries` gate. */
     boundaries: z
       .object({
@@ -112,6 +118,7 @@ export interface ResolvedPolicy {
     engineCommand?: string;
     maxCheapRetries?: number;
   };
+  allowSecretFixtureMarkers?: string[];
   dependencies?: { approvedFiles: string[] };
   boundaries?: {
     forbiddenImports?: { from: string; disallow: string[] }[];
@@ -178,6 +185,9 @@ export function toResolvedPolicy(policy: Policy, source: 'file' | 'default'): Re
       engineCommand: policy.execution.engineCommand,
       maxCheapRetries: policy.execution.maxCheapRetries,
     };
+  }
+  if (policy.allowSecretFixtureMarkers !== undefined) {
+    resolved.allowSecretFixtureMarkers = [...policy.allowSecretFixtureMarkers];
   }
   if (policy.dependencies !== undefined) {
     resolved.dependencies = { approvedFiles: [...policy.dependencies.approvedFiles] };

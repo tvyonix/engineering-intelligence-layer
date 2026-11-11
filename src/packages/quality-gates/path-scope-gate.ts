@@ -107,6 +107,19 @@ export function pathScopeGate(): Gate {
         }
       }
 
+      // 1.7 hardening: changes HIDDEN from the diff (skip-worktree,
+      // exclude-hidden untracked, nested repos) are integrity violations
+      // regardless of scope — an honest diff cannot contain what git
+      // refuses to report.
+      for (const hidden of ctx.diff.hiddenChanges) {
+        violations.push({
+          rule: `hidden-change:${hidden.kind}`,
+          path: hidden.path,
+          detail: hidden.detail,
+          classification: 'new',
+        });
+      }
+
       const status = violations.length > 0 ? 'fail' : 'pass';
       const reason =
         violations.length > 0

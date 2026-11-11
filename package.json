@@ -1,6 +1,6 @@
 {
   "name": "eil",
-  "version": "0.2.0-alpha.0",
+  "version": "0.2.0-alpha.4",
   "description": "Engineering Intelligence Layer — deterministic diff policy, quality gates and evidence around existing coding agents. Spec: openspec/changes/establish-engineering-intelligence-layer",
   "type": "module",
   "private": true,

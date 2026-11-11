@@ -5,3 +5,4 @@ eil-evidence/
 *.tsbuildinfo
 .DS_Store
 .eil-self-check/
+ops/review-repro/

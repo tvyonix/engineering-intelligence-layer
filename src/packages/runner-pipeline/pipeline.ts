@@ -6,7 +6,7 @@ import type { TaskContract } from '../contracts/task-contract.js';
 import { parseTaskContract } from '../contracts/task-contract.js';
 import { hashTaskContract } from '../contracts/hash.js';
 import type { ResolvedPolicy } from '../contracts/policy.js';
-import { resolveCommit } from '../diff-inspector/git.js';
+import { resolveCommit, runGit } from '../diff-inspector/git.js';
 import { isExecutionPermitted } from '../quality-gates/execution-policy.js';
 import { classifyTaskRisk, type TaskRisk } from '../policy-engine/risk.js';
 import { planNextAttempt, type AttemptRecord, type CascadePlan } from '../policy-engine/cascade.js';
@@ -223,6 +223,12 @@ export async function runTaskPipeline(options: PipelineOptions): Promise<Pipelin
       let failureSignatures: string[] = [];
       let checkVerdict: string | undefined;
       let checkExitCode: number | undefined;
+      // 1.7 review: an engine writing into .git (config/info/exclude,
+      // hooks, refs) must not be able to blind the checker silently.
+      // Snapshot the workspace .git state before the engine runs and
+      // compare after; any drift is an attempt failure with its own
+      // signature.
+      const gitStateBefore = await snapshotGitState(workspace.dir);
       try {
         const result = await options.engine.execute({
           workspaceDir: workspace.dir,
@@ -231,12 +237,20 @@ export async function runTaskPipeline(options: PipelineOptions): Promise<Pipelin
           timeoutMs,
           maxOutputBytes,
         });
+        const gitStateAfter = await snapshotGitState(workspace.dir);
+        if (gitStateAfter !== gitStateBefore) {
+          failureSignatures.push('engine:mutated-git-state');
+          notes.push(`attempt ${attemptNumber}: engine modified .git state (config/exclude/refs) — recorded as a failure signal`);
+        }
         engineStatus = result.status;
         failureSignatures = [...result.failureSignatures];
         attemptRecords.push({
           id: `attempt-${attemptNumber}`,
           tier,
-          status: result.status === 'complete' ? 'complete' : 'failed',
+          // An engine success whose diff FAILS the gates is a FAILED
+          // attempt for cascade purposes — retries and escalation must
+          // trigger on gate failures too (1.7 review).
+          status: 'failed', // provisional; resolved to complete only when gates pass
           failureSignatures,
         });
         if (ledger !== null) {
@@ -247,7 +261,11 @@ export async function runTaskPipeline(options: PipelineOptions): Promise<Pipelin
             status: result.status,
             startedAt: result.startedAt,
             endedAt: result.completedAt,
-            costKind: result.usage ? 'billed' : 'unknown',
+            // Token counts alone do not make a billed cost: without a
+            // versioned price table the USD amount is unknown (1.7 review
+            // — validateCost would throw the moment an engine reports
+            // usage). Priced accounting lands with the Pi adapter.
+            costKind: 'unknown',
             policyVersion: options.policy.source,
           });
         }
@@ -300,19 +318,21 @@ export async function runTaskPipeline(options: PipelineOptions): Promise<Pipelin
               failureSignatures.push(`gate:${gate.id}:${gate.status}`);
             }
           }
-          if (attemptRecords.length > 0) {
-            const last = attemptRecords[attemptRecords.length - 1] as AttemptRecord;
-            last.failureSignatures = [...last.failureSignatures, ...failureSignatures.filter((s) => s.startsWith('gate:'))];
-          }
+          const last = attemptRecords[attemptRecords.length - 1] as AttemptRecord;
+          last.failureSignatures = [...last.failureSignatures, ...failureSignatures.filter((sig) => sig.startsWith('gate:'))];
+          last.status = engineStatus === 'complete' && checkVerdict === 'needs_review' ? 'complete' : 'failed';
         } else {
           failureSignatures.push('gate:check-unavailable:error');
           const last = attemptRecords[attemptRecords.length - 1] as AttemptRecord | undefined;
-          if (last !== undefined) last.failureSignatures = [...last.failureSignatures, 'gate:check-unavailable:error'];
+          if (last !== undefined) {
+            last.failureSignatures = [...last.failureSignatures, 'gate:check-unavailable:error'];
+            last.status = 'failed';
+          }
         }
 
         if (result.status !== 'complete' || checkVerdict === 'blocked' || checkVerdict === 'error') {
           // Failed attempt: preserve artifacts, then discard the workspace.
-          const capture = await captureFailedAttempt(workspace.dir, options.out, `attempt-${attemptNumber}`);
+          const capture = await captureFailedAttempt(workspace.dir, options.out, `attempt-${attemptNumber}`, { baseCommit });
           if ('ok' in capture && capture.ok === false) {
             notes.push(`attempt ${attemptNumber}: artifact capture failed — ${capture.reason}`);
           }
@@ -371,4 +391,26 @@ async function preflightRisk(contract: TaskContract, ledger: Ledger | null): Pro
     ledger.db.prepare('UPDATE tasks SET risk = ? WHERE id = ?').run(assessment.risk, contract.id);
   }
   return { finalRisk: assessment.risk };
+}
+
+
+async function snapshotGitState(workspaceDir: string): Promise<string> {
+  const { createHash } = await import('node:crypto');
+  const { readFile } = await import('node:fs/promises');
+  const { join } = await import('node:path');
+  const parts: string[] = [];
+  for (const rel of ['config', 'info/exclude']) {
+    try {
+      parts.push(`${rel}:${createHash('sha256').update(await readFile(join(workspaceDir, '.git', rel))).digest('hex').slice(0, 16)}`);
+    } catch {
+      parts.push(`${rel}:-`);
+    }
+  }
+  try {
+    const head = await runGit(workspaceDir, ['rev-parse', 'HEAD']);
+    parts.push(`HEAD:${head.stdout.trim()}`);
+  } catch {
+    parts.push('HEAD:-');
+  }
+  return parts.join('|');
 }

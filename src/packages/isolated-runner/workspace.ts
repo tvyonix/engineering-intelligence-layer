@@ -178,6 +178,9 @@ export async function recoverStaleWorkspaces(workspacesRoot: string): Promise<st
   const dirents = await fs.readdir(workspacesRoot, { withFileTypes: true });
   for (const dirent of dirents) {
     if (!dirent.isDirectory()) continue;
+    // Only EIL-managed workspaces (1.7 review): never touch foreign
+    // directories that merely lack a lock file.
+    if (!dirent.name.startsWith('eil-ws-') && !dirent.name.startsWith('eil-bench-') && !/eil-ws-.*\.lock\.json/.test(dirent.name)) continue;
     const dir = join(workspacesRoot, dirent.name);
     const lock = await readLock(workspacesRoot, dir);
     const stale =
@@ -203,12 +206,16 @@ export async function captureFailedAttempt(
   workspaceDir: string,
   evidenceDir: string,
   attemptId: string,
+  options: { baseCommit?: string } = {},
 ): Promise<{ changedFilesPath: string; patchPath: string } | { ok: false; reason: string }> {
-  const nameStatus = await runGit(workspaceDir, ['diff', '--name-status', '-z', '--no-color']);
+  // Diff against the task BASE, not the index: an engine may COMMIT its
+  // changes, and index-only diffs would silently miss them (1.7 review).
+  const diffArgsBase = options.baseCommit !== undefined ? [options.baseCommit, '--'] : [];
+  const nameStatus = await runGit(workspaceDir, ['diff', '--name-status', '-z', '--no-color', ...diffArgsBase]);
   if (nameStatus.code !== 0) {
     return { ok: false, reason: `git diff failed: ${nameStatus.stderr.trim()}` };
   }
-  const patch = await runGit(workspaceDir, ['diff', '--no-color']);
+  const patch = await runGit(workspaceDir, ['diff', '--no-color', ...diffArgsBase]);
   if (patch.code !== 0) {
     return { ok: false, reason: `git diff (patch) failed: ${patch.stderr.trim()}` };
   }
@@ -241,7 +248,10 @@ export async function captureFailedAttempt(
     ...untrackedPaths,
     '',
   ].join('\n');
+  const { redactSecretsInText } = await import('../quality-gates/secrets-scan-gate.js');
   await writeFile(changedFilesPath, changedFilesContent, 'utf8');
-  await writeFile(patchPath, parts.join(''), 'utf8');
+  // Captured patches are evidence: secret-shaped content is redacted
+  // before storage (1.7 review).
+  await writeFile(patchPath, redactSecretsInText(parts.join('')), 'utf8');
   return { changedFilesPath, patchPath };
 }

@@ -12,6 +12,13 @@ quality:
     # (they are not required here), kept for operator reference.
     types: "npx --no-install tsc --noEmit --pretty false"
     lint: "npx --no-install eslint . --format json"
+# Privileged marker allowlist: where eil-allow-secret-fixture may appear.
+# The detector's own pattern fixtures and the test suite are the only
+# legitimate secret-shaped content in this repository.
+allowSecretFixtureMarkers:
+  - "src/packages/quality-gates/secrets-scan-gate.ts"
+  - "src/**/*.test.ts"
+  - "tests/**"
 boundaries:
   forbiddenImports:
     # The packages layer must never depend on the CLI app layer.

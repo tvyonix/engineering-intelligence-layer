@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { gitEnv } from '../diff-inspector/git.js';
+import { buildSandboxedEnv } from './command-env.js';
 
 export interface CommandRunResult {
   /** null when the process was killed by a signal. */
@@ -33,12 +33,26 @@ export interface RunCommandOptions {
 export function runCommand(command: string, cwd: string, options: RunCommandOptions): Promise<CommandRunResult> {
   return new Promise((resolve) => {
     const startedAt = Date.now();
+    // detached + process group: a timeout must kill the WHOLE tree.
+    // Killing only bash left children alive holding the stdio pipes —
+    // an 8s `sleep` outlived a 500ms timeout by 7.5s (1.7 review).
     const child = spawn('bash', ['-c', command], {
       cwd,
-      env: gitEnv(),
+      env: buildSandboxedEnv(),
       windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
     });
+    const killGroup = () => {
+      if (child.pid !== undefined) {
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+        } catch {
+          // group already gone — fall through to direct kill
+        }
+      }
+      child.kill('SIGKILL');
+    };
 
     let timedOut = false;
     let capKilled = false;
@@ -49,14 +63,14 @@ export function runCommand(command: string, cwd: string, options: RunCommandOpti
 
     const timer = setTimeout(() => {
       timedOut = true;
-      child.kill('SIGKILL');
+      killGroup();
     }, options.timeoutMs);
 
     child.stdout?.on('data', (chunk: Buffer) => {
       stdoutLen += chunk.length;
       if (stdoutLen > options.maxOutputBytes) {
         capKilled = true;
-        child.kill('SIGKILL');
+        killGroup();
         return;
       }
       stdoutChunks.push(chunk);
@@ -65,7 +79,7 @@ export function runCommand(command: string, cwd: string, options: RunCommandOpti
       stderrLen += chunk.length;
       if (stderrLen > options.maxOutputBytes) {
         capKilled = true;
-        child.kill('SIGKILL');
+        killGroup();
         return;
       }
       stderrChunks.push(chunk);
