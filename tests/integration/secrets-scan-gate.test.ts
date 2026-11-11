@@ -63,7 +63,7 @@ describe('file-content scanning (1.7 rework)', () => {
   it('NUL bytes do not hide content (binary normalization)', async () => {
     const root = await mkdtemp(join(tmpdir(), 'eil-sec3-'));
     await mkdir(join(root, 'src'), { recursive: true });
-    await writeFile(join(root, 'src', 'bin.ts'), Buffer.from('const k = "AKIAABCDEFGHIJKLMNOP";\n// \0\nmore\n'));
+    await writeFile(join(root, 'src', 'bin.ts'), Buffer.from('const k = "AKIAABCDEFGHIJKLMNOP";\n// \0\nmore\n'));  // eil-allow-secret-fixture
     const result = await scanFilesForSecrets([{ path: 'src/bin.ts', absolute: join(root, 'src', 'bin.ts') }], {
       markerAllowed: () => false,
       isBaselineLine: () => false,
@@ -75,10 +75,10 @@ describe('file-content scanning (1.7 rework)', () => {
   it('baseline lines are classified inherited and do not fail', async () => {
     const root = await mkdtemp(join(tmpdir(), 'eil-sec4-'));
     await mkdir(join(root, 'src'), { recursive: true });
-    await writeFile(join(root, 'src', 'old.ts'), 'export const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";\n');
+    await writeFile(join(root, 'src', 'old.ts'), 'export const AWS_KEY = "AKIAIOSFODNN7EXAMPLE";\n');  // eil-allow-secret-fixture
     const result = await scanFilesForSecrets([{ path: 'src/old.ts', absolute: join(root, 'src', 'old.ts') }], {
       markerAllowed: () => false,
-      isBaselineLine: (_p, line) => line.includes('AKIAIOSFODNN7EXAMPLE'),
+      isBaselineLine: (_p, line) => line.includes('AKIAIOSFODNN7EXAMPLE'),  // eil-allow-secret-fixture
     });
     expect(result.findings).toHaveLength(1);
     expect(result.findings[0]?.inherited).toBe(true);
@@ -87,8 +87,8 @@ describe('file-content scanning (1.7 rework)', () => {
 
   it('redactSecretsInText masks structured and assignment secrets in patches', () => {
     const text = [
-      '+const AWS_KEY = "AKIAABCDEFGHIJKLMNOP";',
-      '+password = "super-secret-value-123"',
+      '+const AWS_KEY = "AKIAABCDEFGHIJKLMNOP";', // eil-allow-secret-fixture
+      '+password = "super-secret-value-123"', // eil-allow-secret-fixture
       '+const clean = 1;',
     ].join('\n');
     const redacted = redactSecretsInText(text);

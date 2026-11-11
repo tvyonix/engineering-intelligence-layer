@@ -5,7 +5,8 @@
  */
 export interface CheckOptions {
   repo: string;
-  task: string;
+  /** Omitted => ad-hoc mode: a built-in contract screens the current diff. */
+  task?: string;
   base?: string;
   policy?: string;
   out?: string;

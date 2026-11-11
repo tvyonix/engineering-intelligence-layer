@@ -63,11 +63,30 @@ export async function runCheck(options: CheckOptions): Promise<CheckRunOutput> {
   const quiet = options.quiet ?? false;
   const startedAt = new Date().toISOString();
 
-  // 1. Task contract (validated before any repository access: a blocked task
-  //    must never reach the agent or the repo — task-contract spec).
-  const taskLoad = await readYamlFile(options.task);
-  if (!taskLoad.ok) return fail(out, quiet, `task contract: ${taskLoad.error}`);
-  const contractResult = parseTaskContract(taskLoad.data, hashTaskContract);
+  // 1. Task contract. Ad-hoc mode (--task omitted): a built-in permissive
+  //    contract over the current diff; full mode validates the file before
+  //    any repository access (task-contract spec).
+  let contractResult;
+  let adHoc = false;
+  if (options.task === undefined) {
+    adHoc = true;
+    contractResult = parseTaskContract(
+      {
+        version: 1,
+        id: 'ad-hoc-check',
+        baseCommit: 'HEAD',
+        description: 'Ad-hoc check of the current diff (no task contract provided)',
+        scope: { allow: ['**'], protect: ['.env*', '.git/**'] },
+        acceptance: [{ id: 'manual-review', description: 'Ad-hoc check: human reviews the diff' }],
+        policy: { maxAttempts: 1, noNewDependencies: false },
+      },
+      hashTaskContract,
+    );
+  } else {
+    const taskLoad = await readYamlFile(options.task);
+    if (!taskLoad.ok) return fail(out, quiet, `task contract: ${taskLoad.error}`);
+    contractResult = parseTaskContract(taskLoad.data, hashTaskContract);
+  }
   if (!contractResult.ok) {
     log(out, quiet, 'eil: error: task contract is invalid:');
     for (const issue of contractResult.issues) log(out, quiet, `  - ${issue}`);
@@ -77,13 +96,20 @@ export async function runCheck(options: CheckOptions): Promise<CheckRunOutput> {
   const contract = contractResult.contract;
   const contractHash = contractResult.contractHash;
   log(out, quiet, `eil: task '${contract.id}' accepted; contract ${contractHash}`);
+  if (adHoc) {
+    log(out, quiet, 'eil: ad-hoc mode — built-in contract + quick static gates (add --task/--policy for the full mode, see docs/getting-started.md)');
+  }
   for (const warning of contractResult.warnings) {
     log(out, quiet, `eil: warning: ${warning}`);
   }
 
-  // 2. Policy.
+  // 2. Policy. Ad-hoc without an explicit policy => quick static gate set;
+  //    the full default policy (with command gates) requires intentionality.
+  const AD_HOC_GATES = ['path-scope', 'dependency-policy', 'secrets-scan'];
   let resolvedPolicy;
-  if (options.policy !== undefined) {
+  if (adHoc && options.policy === undefined) {
+    resolvedPolicy = { source: 'default' as const, quality: { required: AD_HOC_GATES } };
+  } else if (options.policy !== undefined) {
     const policyLoad = await readYamlFile(options.policy);
     if (!policyLoad.ok) return fail(out, quiet, `policy: ${policyLoad.error}`);
     const policyResult = parsePolicy(policyLoad.data);
@@ -295,7 +321,8 @@ export async function runCheck(options: CheckOptions): Promise<CheckRunOutput> {
 const USAGE = `eil ${EIL_VERSION} — Engineering Intelligence Layer (check-only build)
 
 Usage:
-  eil check --repo <path> --task <task.yaml> [--base <ref>] [--policy <policy.yaml>] [--out <dir>] [--ledger <db>] [--json]
+  eil check --repo <path> [--task <task.yaml>] [--base <ref>] [--policy <policy.yaml>] [--out <dir>] [--ledger <db>] [--json]
+               # no --task => ad-hoc: quick static check of the current diff
   eil run --repo <path> --task <task.yaml> --policy <policy.yaml> --out <dir> [--ledger <db>]
   eil symbols --repo <path> --file <relpath>
   eil references --repo <path> --file <relpath> --name <symbol>
@@ -413,15 +440,17 @@ export async function main(argv: string[]): Promise<0 | 1 | 2> {
   }
   const repo = args['repo'];
   const task = args['task'];
-  if (typeof repo !== 'string' || typeof task !== 'string') {
-    console.error('eil: error: both --repo and --task are required for `eil check`');
+  if (typeof repo !== 'string') {
+    console.error('eil: error: --repo is required for `eil check`');
     console.error(USAGE);
     return 2;
   }
+  // --task is optional: without it, check runs in ad-hoc mode over the
+  // current diff (quick static gates, built-in contract).
   try {
     const result = await runCheck({
       repo,
-      task,
+      task: typeof task === 'string' ? task : undefined,
       base: typeof args['base'] === 'string' ? args['base'] : undefined,
       policy: typeof args['policy'] === 'string' ? args['policy'] : undefined,
       out: typeof args['out'] === 'string' ? args['out'] : undefined,

@@ -23,8 +23,8 @@ const ASSIGNMENT_RE = /\b(api[_-]?key|secret|passwd|password|token)\b\s*[:=]\s*[
 /**
  * Placeholder exemption is intentionally STRICT (1.7 review): the ENTIRE
  * value must look like a placeholder. Substring hints ('example', '<')
- * allowed smuggling real secrets through — `AKIA…EXAMPLE` and
- * `password = "hunter2…" // a<b` must both stay findings.
+ * allowed smuggling real secrets through — `AKIA…EXAMPLE` and  (doc fixture)
+ * `password = "hunter2…" // a<b` must both stay findings. (doc fixture: eil-allow-secret-fixture)
  */
 const PLACEHOLDER_VALUE_RE =
   /^(?:x{3,}|\*{3,}|<[^>]{1,30}>|\$\{[^}]{1,50}\}|\.{3}|…|n\/?a|true|false|null)$/i;

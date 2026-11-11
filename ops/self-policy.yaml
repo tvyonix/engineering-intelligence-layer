@@ -22,6 +22,7 @@ allowSecretFixtureMarkers:
   - "docs/**"
 workspaceIntegrity:
   ignoreHidden:
+    - "**/.DS_Store"
     - "node_modules/**"
     - "dist/**"
     - "eil-evidence/**"
