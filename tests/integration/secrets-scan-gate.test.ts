@@ -14,10 +14,10 @@ describe('file-content scanning (1.7 rework)', () => {
   it('detects structured signatures and strict placeholders in CONTENT', async () => {
     const root = await mkdtemp(join(tmpdir(), 'eil-sec-'));
     const lines = [
-      { file: 'src/a.ts', text: 'aws_key = "AKIAIOSFODNN7EXAMPLE"' }, // real-looking; EXAMPLE suffix is NOT an exemption
-      { file: 'src/b.ts', text: '-----BEGIN RSA PRIVATE KEY-----' },
+      { file: 'src/a.ts', text: 'aws_key = "AKIAIOSFODNN7EXAMPLE"' }, // real-looking; EXAMPLE suffix is NOT an exemption // eil-allow-secret-fixture
+      { file: 'src/b.ts', text: '-----BEGIN RSA PRIVATE KEY-----' }, // eil-allow-secret-fixture
       { file: 'src/c.ts', text: 'API_KEY = "example"' }, // whole-value placeholder → exempt
-      { file: 'src/d.ts', text: 'password = "hunter2hunter2"; // a<b' }, // '<' is NOT an exemption
+      { file: 'src/d.ts', text: 'password = "hunter2hunter2"; // a<b' }, // '<' is NOT an exemption // eil-allow-secret-fixture
       { file: 'src/e.ts', text: 'const answer = 42;' },
     ];
     for (const l of lines) {

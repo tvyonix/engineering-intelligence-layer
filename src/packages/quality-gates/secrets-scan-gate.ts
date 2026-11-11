@@ -18,7 +18,7 @@ const SECRET_PATTERNS: { rule: string; re: RegExp }[] = [
   { rule: 'google-api-key', re: /\bAIza[0-9A-Za-z_-]{35}\b/ }, // eil-allow-secret-fixture
 ];
 
-const ASSIGNMENT_RE = /\b(api[_-]?key|secret|passwd|password|token)\b\s*[:=]\s*['"][^'"\n]{8,}['"]/i;
+const ASSIGNMENT_RE = /\b(api[_-]?key|secret|passwd|password|token)\b\s*[:=]\s*['"][^'"\n]{8,}['"]/i; // eil-allow-secret-fixture (detector fixture)
 
 /**
  * Placeholder exemption is intentionally STRICT (1.7 review): the ENTIRE

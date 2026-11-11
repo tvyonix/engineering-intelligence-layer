@@ -19,6 +19,7 @@ allowSecretFixtureMarkers:
   - "src/packages/quality-gates/secrets-scan-gate.ts"
   - "src/**/*.test.ts"
   - "tests/**"
+  - "docs/**"
 boundaries:
   forbiddenImports:
     # The packages layer must never depend on the CLI app layer.
