@@ -92,8 +92,8 @@ describe('file-content scanning (1.7 rework)', () => {
       '+const clean = 1;',
     ].join('\n');
     const redacted = redactSecretsInText(text);
-    expect(redacted).not.toContain('AKIAABCDEFGHIJKLMNOP');
-    expect(redacted).not.toContain('super-secret-value-123');
+    expect(redacted).not.toContain('AKIAABCDEFGHIJKLMNOP'); // eil-allow-secret-fixture
+    expect(redacted).not.toContain('super-secret-value-123'); // eil-allow-secret-fixture
     expect(redacted).toContain('const clean = 1;');
     expect(redacted).toContain('[REDACTED:aws-access-key]');
   });
