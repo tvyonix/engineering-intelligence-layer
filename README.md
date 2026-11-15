@@ -63,6 +63,13 @@ scripts/                         # self-check, sandbox test, bench smoke, field 
 .github/workflows/               # ci (matrix + self-check + audit), field (OSS)
 ```
 
+## Подключить к своему проекту
+
+Публичная установка одной командой (без клонирования и без зависимостей в
+ваш проект): `npx -y github:tvyonix/engineering-intelligence-layer check --repo .`
+Копипаст-инструкция по уровням (разовая проверка → CI → полный прогон):
+**[docs/connect-your-project.md](docs/connect-your-project.md)**.
+
 ## Быстрый старт (для новичков)
 
 Пошаговая инструкция с нуля — с примерами, разбором вердиктов и частыми
