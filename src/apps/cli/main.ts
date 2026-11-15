@@ -7,6 +7,7 @@
  * the target repository, and never executes repository content.
  */
 import { readFile, realpath, writeFile } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
@@ -631,8 +632,20 @@ function quietArg(args: ParsedArgs): boolean {
 }
 
 /* istanbul ignore next */
-if (process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  main(process.argv.slice(2)).then((code) => {
-    process.exitCode = code;
-  });
+// Entry guard must survive the npm bin symlink: argv[1] points at
+// .bin/eil, while import.meta.url is the real dist file — compare through
+// realpath or the CLI silently no-ops when installed (found via npx).
+if (process.argv[1] !== undefined) {
+  let invoked: string | null = null;
+  try {
+    invoked = realpathSync(resolve(process.argv[1]));
+  } catch {
+    invoked = null;
+  }
+  const invokedUrl = invoked !== null ? pathToFileURL(invoked).href : null;
+  if (invokedUrl !== null && import.meta.url === invokedUrl) {
+    main(process.argv.slice(2)).then((code) => {
+      process.exitCode = code;
+    });
+  }
 }
