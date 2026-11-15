@@ -19,7 +19,8 @@
     "selfcheck": "node scripts/self-check.mjs",
     "bench:smoke": "node scripts/publish-bench-smoke.mjs",
     "field:test": "node scripts/field-test.mjs",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",
